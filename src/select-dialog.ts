@@ -269,19 +269,15 @@ export function initSelectionDialog({
       const rect = modal.getBoundingClientRect()
       const tooltipRect = tooltip.getBoundingClientRect()
 
-      let left
+      let left = ev.clientX - rect.left + 8
       if (ev.clientX + tooltipRect.width + 24 > window.innerWidth) {
-        left = ev.clientX - rect.left - tooltipRect.width - 10 
-      } else {
-        left = ev.clientX - rect.left + 10
-      }
+        left -= tooltipRect.width + 16
+      } 
 
-      let top
+      let top = ev.clientY - rect.top + 8
       if (ev.clientY + tooltipRect.height + 24 > window.innerHeight) {
-        top = ev.clientY - rect.top - tooltipRect.height - 10
-      } else {
-        top = ev.clientY - rect.top + 10
-      }
+        top -= tooltipRect.height + 16
+      } 
 
       tooltip.style.transform = `translate(${left}px, ${top}px)`
     }
