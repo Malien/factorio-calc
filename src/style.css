@@ -39,7 +39,7 @@ h1, h2, h3, h4, h5, h6 {
   border: var(--glow-border);
   height: 100%;
   box-sizing: border-box;
-  padding: 10px;
+  padding: 0.5rem;
   background-color: var(--chrome-base-color);
 }
 
@@ -50,59 +50,110 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 #selection-dialog {
-  width: calc(100% - 80px);
-  max-width: 1000px;
-  max-height: calc(100% - 80px);
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  border: none;
+  background: none;
+  pointer-events: none;
+}
+
+.dialog-modal {
+  width: calc(100% - 5rem);
+  max-width: 62.5rem;
+  max-height: calc(100% - 5rem);
   box-sizing: border-box;
   border: none;
-  margin: 40px;
+  margin: 2.5rem;
   background: #313131;
-  border-radius: 2px;
+  border-radius: 0.125rem;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
   top: 50%;
   left: 50%;
-  transform: translate(calc(-50% - 40px), calc(-50% - 40px));
+  transform: translate(calc(-50% - 2.5rem), calc(-50% - 2.5rem));
+  position: fixed;
+  pointer-events: all;
+  padding: 1rem;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 #selection-dialog::backdrop {
   background-color: rgba(0, 0, 0, 0.5);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
+  animation: fade-in 0.6s ease-out;
+}
+
+#selection-dialog.hidden::backdrop {
+  animation: fade-out 0.2s ease-out;
+}
+
+@keyframes slide-out {
+  from {
+    transform: translate(calc(-50% - 2.5rem), calc(-50% - 2.5rem));
+    opacity: 1;
+  }
+  to {
+    transform: translate(calc(-50% - 2.5rem), calc(-50%)) scale(0.9);
+    opacity: 0;
+  }
+}
+
+#selection-dialog.hidden .dialog-modal {
+  animation: slide-out 0.2s ease-out;
 }
 
 .selection-chrome {
-  padding: 20px;
+  padding: 1.25rem;
   background-color: #404040;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   box-shadow: 0 1px 6px #000 inset;
 }
 
 .dialog-title {
-  margin-bottom: 10px;
+  margin-bottom: 0.5rem;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 1.25rem;
   color: var(--text-color);
 }
 
-#selection-form {
+.selection-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
-  grid-auto-rows: 50px;
-  padding: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(3rem, 1fr));
+  grid-auto-rows: 3rem;
+  padding: 0.125rem;
+  min-height: 33.05rem;
   background-color: #202020;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   box-shadow: 0 1px 6px #000 inset;
 }
 
 .recipe-button {
   appearance: none;
   border: none;
-  /* height: 50px; */
-  /* width: 50px; */
-  margin: 2px;
-  padding: 4px;
+  margin: 0.125rem;
+  padding: 0.25rem;
   background-color: #313131;
-  border-radius: 5px;
+  border-radius: 0.25rem;
   box-shadow: 0 1px 4px #00000080;
   cursor: pointer;
   position: relative;
@@ -126,6 +177,8 @@ h1, h2, h3, h4, h5, h6 {
   object-fit: contain;
   z-index: 10;
   position: relative;
+  opacity: 0;
+  /* animation: fade-in 0.4s ease-out; */
 }
 
 .recipe-button:hover {
@@ -134,5 +187,83 @@ h1, h2, h3, h4, h5, h6 {
 
 .recipe-button:focus {
   outline-color: #FFA900;
+}
+
+.recipe-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 1);
+  z-index: 100;
+}
+
+.recipe-tooltip.hidden {
+  display: none;
+}
+
+.recipe-tooltip .tooltip-title {
+  background-color: rgb(248, 218, 181);
+  padding: 0.25rem;
+  font-size: 0.75rem;
+  border: 1.5px solid #000000A0;
+  font-weight: 600;
+}
+
+.recipe-tooltip .tooltip-ingredients {
+  background-color: #20202080;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 0.25rem;
+}
+
+.recipe-tooltip .tooltip-ingredients-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem;
+  color: var(--text-color);
+}
+
+.recipe-tooltip .tooltip-ingredient-icon {
+  font-size: 0.75rem;
+  padding: 0.25rem;
+  color: var(--text-color);
+  height: 1.75rem;
+  width: 1.75rem;
+  object-fit: contain;
+  margin-right: 0.25rem;
+  padding: 0;
+}
+
+.recipe-tooltip .tooltip-ingredient {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  padding: 0.25rem;
+  color: var(--text-color);
+}
+
+.recipe-tooltip .tooltip-ingredient-amount {
+  font-weight: 600;
+  margin-right: 0.25rem;
+  display: inline-block;
+}
+
+.recipe-tooltip .tooltip-spacer {
+  margin-left: 2rem;
+  width: calc(100% - 2rem);
+  height: 1px;
+  background-color: #ffffff20;
+}
+
+.recipe-tooltip .tooltip-crafting-time {
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 2rem;
+  margin-top: 0.25rem;
+  color: var(--text-color);
+}
+
+.recipe-tooltip .tooltip-crafting-time-value {
+  font-weight: 600;
 }
 

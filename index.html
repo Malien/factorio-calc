@@ -5,19 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite + TS</title>
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div class="app">
+
       <div class="canvas-chrome">
         <canvas id="canvas"></canvas>
       </div>
-      <dialog id="selection-dialog">
-        <h1 class="dialog-title">Select root recipe</h1>
-        <div class="selection-chrome">
-          <form id="selection-form" method="dialog">
-          </form>
+
+      <dialog id="selection-dialog" open>
+        <div class="dialog-modal">
+          <h1 class="dialog-title">Select root recipe</h1>
+          <div class="selection-chrome">
+            <form class="selection-form" method="dialog">
+            </form>
+          </div>
+
+          <div class="recipe-tooltip hidden">
+            <div class="tooltip-title"></div>
+            <div class="tooltip-ingredients">
+              <div class="tooltip-ingredients-title">Ingredients:</div>
+              <div class="tooltip-ingredients-list"></div>
+              <div class="tooltip-spacer"></div>
+              <div class="tooltip-crafting-time">
+                <span class="tooltip-crafting-time-value"></span>
+                <span class="tooltip-crafting-time-title"> Crafting time</span>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       </dialog>
+
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
