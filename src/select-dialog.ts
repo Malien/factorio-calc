@@ -6,6 +6,7 @@ import {
   recipes,
   recipeMap,
 } from "./recipe"
+import { scheduleTilDeadline } from "./scheduler"
 import memoize from "./memoize"
 
 const lookupOrder = ["item", "recipe", "fluid", "entity", "equipment"] as const
@@ -158,10 +159,17 @@ const prepareIconWithName = memoize(async (name: string) => {
   const iconURL = icons.get(name)
   if (!iconURL) throw new Error("Cannot find icon with name " + name)
   const image = await loadImage(iconURL)
-  cropCtx.clearRect(0, 0, 64, 64)
-  cropCtx.drawImage(image, 0, 0)
-  const croppedBlob = await blobFromCanvas(cropCanvas)
-  return URL.createObjectURL(croppedBlob)
+
+  return new Promise<string>((resolve, reject) => {
+    scheduleTilDeadline(() => {
+      cropCtx.clearRect(0, 0, 64, 64)
+      cropCtx.drawImage(image, 0, 0)
+      cropCanvas.toBlob(blob => {
+        if (blob) resolve(URL.createObjectURL(blob))
+        else reject(new Error("Failed to create blob"))
+      }, "image/png")
+    })
+  })
 })
 
 function loadImage(src: string) {
@@ -170,23 +178,6 @@ function loadImage(src: string) {
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error(`Failed to load image ${src}`))
     img.src = src
-  })
-}
-
-function blobFromCanvas(
-  canvas: HTMLCanvasElement,
-  type: string = "image/png",
-  quality: number = 1
-) {
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      blob => {
-        if (blob) resolve(blob)
-        else reject(new Error("Failed to create blob"))
-      },
-      type,
-      quality
-    )
   })
 }
 

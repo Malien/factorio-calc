@@ -211,7 +211,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .recipe-tooltip .tooltip-ingredients {
-  background-color: #20202080;
+  background-color: #202020C8;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 0.25rem;
