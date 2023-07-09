@@ -1,5 +1,46 @@
+import { Recipe, recipeName } from "./recipe"
+import { TypedMessageChannel } from "./typed-channel"
+
+type CanvasOutEvent = never
+type CanvasInEvent =
+  | { type: "select-root"; recipe: Recipe }
+  | { type: "deinit" }
+
+type RootBox = {
+  type: "root"
+  x: number
+  y: number
+  width: number
+  height: number
+  recipe: Recipe
+  titleMeasures: TextMetrics
+}
+
+type Box = RootBox
+
+// type BoxID = ("root" | number) & { readonly $tag: unique symbol }
+
+const BOX_PADDING = 8
+const ICON_MARGIN = 4
+const ICON_SIZE = 32
+const FONT = {
+  family: "sans-serif",
+  size: 20,
+  weight: 600,
+}
+
+const BOX_BG = "#313131"
+const TEXT_COLOR = "rgb(255, 231, 190)"
+
 export function initCanvas(canvas: HTMLCanvasElement) {
+  const { port1: localPort, port2: remotePort } = new TypedMessageChannel<
+    CanvasInEvent,
+    CanvasOutEvent
+  >()
+
   const ctx = canvas.getContext("2d")!
+  const computedFont = `${FONT.weight} ${FONT.size}px ${FONT.family}`
+  ctx.font = computedFont
 
   let cssWidth = canvas.clientWidth
   let cssHeight = canvas.clientHeight
@@ -15,10 +56,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     invalidateFrame()
   }
 
-  const boxes = [
-    { x: 0, y: 0, width: 100, height: 100, fill: "red" },
-    { x: 150, y: 150, width: 75, height: 75, fill: "green" },
-  ]
+  let rootBox: RootBox | undefined = undefined
 
   let frameInvalidated = false
   revalidateSize()
@@ -26,15 +64,56 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   function draw() {
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
-    for (const box of boxes) {
-      ctx.fillStyle = box.fill
-      ctx.fillRect(box.x, box.y, box.width, box.height)
+    if (rootBox) {
+      ctx.fillStyle = BOX_BG
+      ctx.fillRect(rootBox.x, rootBox.y, rootBox.width, rootBox.height)
+      ctx.fillStyle = TEXT_COLOR
+      ctx.font = computedFont
+      ctx.fillStyle
+      ctx.fillText(
+        recipeName(rootBox.recipe),
+        rootBox.x + BOX_PADDING,
+        rootBox.y + BOX_PADDING + rootBox.titleMeasures.actualBoundingBoxAscent
+      )
     }
   }
 
-  window.addEventListener("resize", () => {
-    revalidateSize()
-  })
+  window.addEventListener("resize", revalidateSize)
+
+  localPort.addEventListener("message", handleMessage)
+  localPort.start()
+
+  function handleMessage(ev: MessageEvent<CanvasInEvent>) {
+    switch (ev.data.type) {
+      case "deinit": {
+        localPort.close()
+        window.removeEventListener("resize", revalidateSize)
+        localPort.removeEventListener("message", handleMessage)
+        break
+      }
+      case "select-root": {
+        const { recipe } = ev.data
+        const name = recipeName(recipe)
+        ctx.font = computedFont
+        const titleMeasures = ctx.measureText(name)
+        const width = BOX_PADDING * 2 + titleMeasures.width
+        const height =
+          BOX_PADDING * 2 +
+          titleMeasures.actualBoundingBoxAscent +
+          titleMeasures.actualBoundingBoxDescent
+        rootBox = {
+          type: "root",
+          x: cssWidth / 2 - width / 2,
+          y: cssHeight * 0.25 - height / 2,
+          width,
+          height,
+          recipe,
+          titleMeasures,
+        }
+        invalidateFrame()
+      }
+    }
+  }
 
   function invalidateFrame() {
     if (!frameInvalidated) {
@@ -49,14 +128,18 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   type PointerState = {
     x: number
     y: number
-    box: typeof boxes[number]
+    box: Box
     anchor: { x: number; y: number }
   }
   const pointerStates = new Map<number, PointerState>()
   let cursor = "auto"
 
   canvas.addEventListener("pointermove", ev => {
-    const boxId = hitTest(ev.x, ev.y)
+    const { left, top } = canvas.getBoundingClientRect()
+    const x = ev.x - left
+    const y = ev.y - top
+
+    const boxId = hitTest(x, y)
     let newCursor = cursor
 
     if (boxId !== undefined) {
@@ -67,8 +150,8 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
     const prevState = pointerStates.get(ev.pointerId)
     if (prevState) {
-      prevState.box.x = ev.x - prevState.anchor.x
-      prevState.box.y = ev.y - prevState.anchor.y
+      prevState.box.x = x - prevState.anchor.x
+      prevState.box.y = y - prevState.anchor.y
       newCursor = "move"
       invalidateFrame()
     }
@@ -79,31 +162,25 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     }
   })
 
-  // type BoxID = number & { readonly $tag: unique symbol }
-  // type Rect = { x: number; y: number; width: number; height: number }
-
   function hitTest(x: number, y: number) {
-    for (const box of boxes) {
-      if (
-        x > box.x &&
-        x < box.x + box.width &&
-        y > box.y &&
-        y < box.y + box.height
-      ) {
-        return box
-      }
+    if (rootBox && isWithinBox(rootBox, x, y)) {
+      return rootBox
     }
   }
 
   canvas.addEventListener("pointerdown", ev => {
-    const box = hitTest(ev.x, ev.y)
+    const { left, top } = canvas.getBoundingClientRect()
+    const x = ev.x - left
+    const y = ev.y - top
+
+    const box = hitTest(x, y)
 
     if (box) {
       pointerStates.set(ev.pointerId, {
-        x: ev.x,
-        y: ev.y,
+        x,
+        y,
         box,
-        anchor: { x: ev.x - box.x, y: ev.y - box.y },
+        anchor: { x: x - box.x, y: y - box.y },
       })
     }
   })
@@ -111,5 +188,12 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   canvas.addEventListener("pointerup", ev => {
     pointerStates.delete(ev.pointerId)
   })
+
+  return remotePort
 }
 
+function isWithinBox(box: Box, x: number, y: number) {
+  return (
+    x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height
+  )
+}

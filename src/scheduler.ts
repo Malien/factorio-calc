@@ -2,13 +2,26 @@ type Task = () => void | Promise<void>
 
 const taskQueue: Task[] = []
 
-export function scheduleTilDeadline<T>(task: () => T | Promise<T>): Promise<T> {
+export function scheduleTilDeadline<T>(
+  task: () => T | Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
   const result = new Promise<T>((resolve, reject) => {
     taskQueue.push(() => {
+      if (signal?.aborted) {
+        reject(new DOMException("Aborted", "AbortError"))
+        return
+      }
       try {
         const res = task()
         if (res instanceof Promise) {
-          return res.then(resolve).catch(reject)
+          return res
+            .then(value => {
+              if (signal?.aborted) {
+                reject(new DOMException("Aborted", "AbortError"))
+              } else resolve(value)
+            })
+            .catch(reject)
         }
         resolve(res)
       } catch (err) {

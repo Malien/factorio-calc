@@ -8,11 +8,17 @@ const selectionDialog = document.getElementById(
   "selection-dialog"
 ) as HTMLDialogElement
 
-initCanvas(canvas)
+const canvasPort = initCanvas(canvas)
 initSelectionDialog({
   dialog: selectionDialog,
   onSelected: recipeName => {
-    console.log("selected", recipeMap.get(recipeName))
+    const recipe = recipeMap.get(recipeName)
+    if (!recipe) {
+      console.error("Selected recipe not found", recipeName)
+      return
+    }
+    console.info("Selected recipe", recipe)
+    canvasPort.postMessage({ type: "select-root", recipe })
   },
 })
 // Markup includes dialog element already shown, we have to reopen it
