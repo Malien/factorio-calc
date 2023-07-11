@@ -12,7 +12,7 @@
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --canvas-color: #3f3f3f;
+  --canvas-color: #1f1f1f;
   --chrome-base-color: #303030;
   --glow-border: 1px solid white  2px solid red;
   --text-color: rgb(255, 231, 190);
@@ -127,6 +127,7 @@ h1, h2, h3, h4, h5, h6 {
   background-color: #404040;
   border-radius: 0.25rem;
   box-shadow: 0 1px 6px #000 inset;
+  max-height: calc(100% - 20rem);
 }
 
 .dialog-title {
@@ -137,6 +138,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .selection-form {
+  height: 0px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(3rem, 1fr));
   grid-auto-rows: 3rem;
@@ -145,6 +147,7 @@ h1, h2, h3, h4, h5, h6 {
   background-color: #202020;
   border-radius: 0.25rem;
   box-shadow: 0 1px 6px #000 inset;
+  overflow: auto;
 }
 
 .recipe-button {
