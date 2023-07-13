@@ -2,6 +2,7 @@ import "./style.css"
 import { initCanvas } from "./canvas"
 import { initSelectionDialog } from "./select-dialog"
 import { recipeMap } from "./recipe"
+import { initialGraph } from "./graph"
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement
 const selectionDialog = document.getElementById(
@@ -18,7 +19,7 @@ initSelectionDialog({
       return
     }
     console.info("Selected recipe", recipe)
-    canvasPort.postMessage({ type: "select-root", recipe })
+    canvasPort.postMessage({ type: "update-graph", graph: initialGraph(recipe) })
   },
 })
 // Markup includes dialog element already shown, we have to reopen it

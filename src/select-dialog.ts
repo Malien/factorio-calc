@@ -1,14 +1,13 @@
 import {
   Recipe,
-  RecipeItem,
   NormalizedRecipeItem,
   recipes,
   recipeMap,
   recipeName,
-  normalizeRecipeItem,
   t,
+  recipeIngredients,
 } from "./recipe"
-import { iconNameForRecipe, prepareIconWithName } from "./icon"
+import { iconForItem, iconNameForRecipe, prepareIconWithName } from "./icon"
 
 function recipeButton(recipe: Recipe, signal?: AbortSignal) {
   const button = document.createElement("button")
@@ -160,21 +159,6 @@ export function initSelectionDialog({
   }
 }
 
-async function iconForItem(item: NormalizedRecipeItem, signal?: AbortSignal) {
-  switch (item.type) {
-    case "item":
-      return await prepareIconWithName(item.name, signal)
-    case "fluid":
-      return await prepareIconWithName(`fluid/${item.name}`, signal)
-  }
-}
-
-function recipeIngredients(recipe: Recipe) {
-  const ingredients = (recipe.ingredients ??
-    recipe.normal.ingredients) as RecipeItem[]
-  return ingredients.map(normalizeRecipeItem)
-}
-
 function ingredient(ingredient: NormalizedRecipeItem) {
   const container = document.createElement("div")
   container.classList.add("tooltip-ingredient")
@@ -187,7 +171,7 @@ function ingredient(ingredient: NormalizedRecipeItem) {
   name.classList.add("tooltip-ingredient-name")
   name.textContent = t(ingredient.name) ?? ingredient.name
 
-  iconForItem(ingredient)
+  iconForItem(ingredient.name, ingredient.type)
     .then(iconURL => {
       const icon = document.createElement("img")
       icon.classList.add("tooltip-ingredient-icon")

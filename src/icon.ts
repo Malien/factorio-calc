@@ -187,3 +187,12 @@ function loadImage(src: string, signal?: AbortSignal) {
   })
 }
 
+export async function iconForItem(itemName: string, type: "item" | "fluid", signal?: AbortSignal) {
+  switch (type) {
+    case "item":
+      return await prepareIconWithName(itemName, signal)
+    case "fluid":
+      return await prepareIconWithName(`fluid/${itemName}`, signal)
+  }
+}
+

@@ -71,3 +71,8 @@ export function normalizeRecipeItem(item: RecipeItem) {
   return item as NormalizedRecipeItem
 }
 
+export function recipeIngredients(recipe: Recipe) {
+  const ingredients = (recipe.ingredients ??
+    recipe.normal.ingredients) as RecipeItem[]
+  return ingredients.map(normalizeRecipeItem)
+}
