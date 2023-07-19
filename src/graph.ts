@@ -1,6 +1,9 @@
-import { Recipe, normalizeRecipeItem, recipeIngredients } from "./recipe";
+import { Recipe, normalizeRecipeItem, recipeIngredients } from "./recipe"
+
+export type NodeID = number & { readonly $tag: unique symbol }
 
 export type RootNode = {
+  id: NodeID
   type: "root"
   recipe: Recipe
   desiredProduction: number
@@ -9,6 +12,7 @@ export type RootNode = {
 export type AssemblerTier = 1 | 2 | 3
 
 export type TerminalNode = {
+  id: NodeID
   type: "terminal"
   itemName: string
   itemType: "item" | "fluid"
@@ -17,13 +21,18 @@ export type TerminalNode = {
 
 export type RecipeNode = RootNode | TerminalNode
 
-type AdjacencyList = number[][]
+export type NextNodeID = string & { readonly $tag: unique symbol }
 
 export type RecipeGraph = {
   nodes: RecipeNode[]
-  vertices: AdjacencyList
-  nodeDepth: number[]
+  vertices: Map<NodeID, NodeID[]>
+  nodeDepth: Map<NodeID, number> 
   nodesOnLevel: number[]
+}
+
+export type Action = {
+  type: "expand"
+  node: NodeID
 }
 
 export function assemblerCount(
@@ -36,21 +45,44 @@ export function assemblerCount(
   return (craftingTime * desiredProduction) / resultCount / tier
 }
 
+let nodesIssued = 0
+export function nextNodeID(): NodeID {
+  return nodesIssued++ as NodeID
+}
+
 export function initialGraph(rootRecipe: Recipe): RecipeGraph {
-  const nodes: RecipeNode[] = [{ type: "root", recipe: rootRecipe, desiredProduction: 2, assemblyMachineTier: 1 }]
+  const rootNode: RootNode = {
+      id: nextNodeID(),
+      type: "root",
+      recipe: rootRecipe,
+      desiredProduction: 2,
+      assemblyMachineTier: 1,
+  }
+
+  const nodes: RecipeNode[] = [rootNode]
 
   const craftingTime = rootRecipe.energy_required ?? 0.5
   const assemblers = assemblerCount(rootRecipe, 2, 1)
 
   for (const ingredient of recipeIngredients(rootRecipe)) {
     const { name, type, amount } = normalizeRecipeItem(ingredient)
-    nodes.push({ type: "terminal", itemName: name, itemType: type, requiredAmount: assemblers * amount / craftingTime })
+    nodes.push({
+      id: nextNodeID(),
+      type: "terminal",
+      itemName: name,
+      itemType: type,
+      requiredAmount: (assemblers * amount) / craftingTime,
+    })
   }
+
+  const subnodes = nodes.slice(1)
+  const nodeDepth = new Map(subnodes.map(node => [node.id, 1]))
+  nodeDepth.set(rootNode.id, 0)
 
   return {
     nodes,
-    vertices: [Array(nodes.length - 1).map((_, i) => i + 1)],
-    nodeDepth: [0, ...Array(nodes.length - 1).fill(1)],
+    vertices: new Map(subnodes.map(node => [rootNode.id, [node.id]])),
+    nodeDepth,
     nodesOnLevel: [1, nodes.length - 1],
   }
 }

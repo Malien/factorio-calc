@@ -57,11 +57,16 @@ export function initSelectionDialog({
   // Init dialog
   {
     const controller = new AbortController()
+
     dialog.addEventListener(
       "submit",
       ev => {
         ev.preventDefault()
         const data = new FormData(ev.target as HTMLFormElement)
+        // iOS doesn't set the value of the submitter button this fixes that
+        if (ev.submitter instanceof HTMLButtonElement && ev.submitter.name) {
+          data.set(ev.submitter.name, ev.submitter.value)
+        }
         const recipeName = data.get("recipeName") as string
         onSelected(recipeName)
 

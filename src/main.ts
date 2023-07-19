@@ -12,7 +12,7 @@ const selectionDialog = document.getElementById(
 const canvasPort = initCanvas(canvas)
 initSelectionDialog({
   dialog: selectionDialog,
-  onSelected: recipeName => {
+  onSelected(recipeName) {
     const recipe = recipeMap.get(recipeName)
     if (!recipe) {
       console.error("Selected recipe not found", recipeName)
@@ -21,6 +21,10 @@ initSelectionDialog({
     console.info("Selected recipe", recipe)
     canvasPort.postMessage({ type: "update-graph", graph: initialGraph(recipe) })
   },
+})
+
+canvasPort.addEventListener("message", event => {
+  console.log("Received message from canvas", event.data)
 })
 // Markup includes dialog element already shown, we have to reopen it
 // so it becomes modal, and also draws ::backdrop pseudo-element

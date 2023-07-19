@@ -1,8 +1,14 @@
-import { RecipeNode, RootNode, assemblerCount } from "../graph"
+import { RecipeNode, RootNode, TerminalNode, assemblerCount } from "../graph"
 import { iconNameForRecipe } from "../icon"
 import { t } from "../recipe"
 import { recipeName } from "../recipe"
-import type { Color, ComputedFont, Widget } from "./common"
+import type {
+  Color,
+  ComputedFont,
+  ExternalElement,
+  Rect,
+  Widget,
+} from "./common"
 
 const BOX_PADDING = 8
 const BOX_CONTENT_MARGIN = 8
@@ -12,6 +18,9 @@ const ICON_SIZE = 28
 const BUTTON_MARGIN = 12
 const BUTTON_PADDING = 4
 const REQUIRED_AMOUNT_MARGIN = 24
+const EXPAND_BUTTON_SIZE = 24
+const EXPAND_BUTTON_MARGIN = 4
+const TERMINAL_BOX_BOTTOM_PADDING = 4
 
 type Font = {
   family: string
@@ -43,6 +52,7 @@ const BUTTON_BG = "#606060" as Color
 const TITLE_COLOR = "rgb(255, 231, 190)" as Color
 const TEXT_COLOR = "white" as Color
 const REQUIRED_AMOUNT_COLOR = "#ccc" as Color
+const FOCUS_COLOR = "#005fdf" as Color
 
 function computeFont(font: Font) {
   return `${font.weight} ${font.size}px ${font.family}` as ComputedFont
@@ -82,6 +92,8 @@ function lineMargin(font: Font) {
 
 type LayoutResult = {
   bbox: { width: number; height: number }
+  dragbox: Rect
+  externalElements: Record<string, ExternalElement>
   contents: Widget[]
 }
 
@@ -145,6 +157,8 @@ export function rootBox(
 
   return {
     bbox,
+    dragbox: { x: 0, y: 0, width: bbox.width, height: headerHeight },
+    externalElements: {},
     contents: [
       {
         type: "box",
@@ -298,15 +312,21 @@ export function rootBox(
   }
 }
 
-export function terminalBox(
-  ctx: CanvasRenderingContext2D,
-  itemName: string,
-  requiredAmount: number,
-): LayoutResult {
-  const name = t(itemName) ?? itemName
+type TerminalBoxProps = {
+  ctx: CanvasRenderingContext2D
+  node: TerminalNode
+  focusedElement?: string
+}
+
+export function terminalBox({
+  ctx,
+  node,
+  focusedElement,
+}: TerminalBoxProps): LayoutResult {
+  const name = t(node.itemName) ?? node.itemName
   const nameMeasures = text(ctx, name, computedFonts.title)
 
-  const requiredAmountText = `${numberFormat.format(requiredAmount)}/s`
+  const requiredAmountText = `${numberFormat.format(node.requiredAmount)}/s`
   const requiredAmountMeasures = text(
     ctx,
     requiredAmountText,
@@ -319,7 +339,11 @@ export function terminalBox(
     ICON_SIZE,
   )
 
-  const bbox = {
+  const expandPlusMeasures = text(ctx, "+", computedFonts.body)
+
+  const dragbox = {
+    x: 0,
+    y: 0,
     width:
       BOX_PADDING * 2 +
       ICON_SIZE +
@@ -327,11 +351,24 @@ export function terminalBox(
       nameMeasures.width +
       REQUIRED_AMOUNT_MARGIN +
       requiredAmountMeasures.width,
-    height: BOX_PADDING * 2 + lineHeight,
+    height: BOX_PADDING * 2 + lineHeight + TERMINAL_BOX_BOTTOM_PADDING,
+  }
+
+  const bbox = {
+    width: dragbox.width,
+    height: dragbox.height + EXPAND_BUTTON_MARGIN + EXPAND_BUTTON_SIZE / 2,
   }
 
   return {
+    dragbox,
     bbox,
+    externalElements: {
+      expand: {
+        tag: "button",
+        activate: { type: "expand", node: node.id },
+        title: "expand recipe",
+      },
+    },
     contents: [
       {
         type: "box",
@@ -339,13 +376,13 @@ export function terminalBox(
         layout: {
           x: 0,
           y: 0,
-          width: bbox.width,
-          height: bbox.height,
+          width: dragbox.width,
+          height: dragbox.height,
         },
       },
       {
         type: "icon",
-        name: itemName,
+        name: node.itemName,
         layout: {
           x: BOX_PADDING,
           y: BOX_PADDING + lineHeight / 2 - ICON_SIZE / 2,
@@ -384,15 +421,60 @@ export function terminalBox(
           height: requiredAmountMeasures.height,
         },
       },
+      {
+        type: "ellipse",
+        bg: focusedElement === "expand" ? FOCUS_COLOR : BOX_BG,
+        layout: {
+          x: dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
+          y: dragbox.height - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
+          width: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
+          height: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
+        },
+      },
+      {
+        type: "ellipse",
+        bg: BUTTON_BG,
+        layout: {
+          x: dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2,
+          y: dragbox.height - EXPAND_BUTTON_SIZE / 2,
+          width: EXPAND_BUTTON_SIZE,
+          height: EXPAND_BUTTON_SIZE,
+        },
+        interactivity: {
+          click: { type: "expand", node: node.id },
+        },
+      },
+      {
+        type: "text",
+        text: "+",
+        font: computedFonts.body,
+        color: TEXT_COLOR,
+        baseline: expandPlusMeasures.baseline,
+        layout: {
+          x: dragbox.width / 2 - expandPlusMeasures.width / 2,
+          y: dragbox.height - expandPlusMeasures.height / 2,
+          width: expandPlusMeasures.width,
+          height: expandPlusMeasures.height,
+        },
+      },
     ],
   }
 }
 
-export function node(ctx: CanvasRenderingContext2D, node: RecipeNode) {
+type LayoutNodeArgs = {
+  ctx: CanvasRenderingContext2D
+  node: RecipeNode
+  focusedElement?: string
+}
+
+export function node({ ctx, node, focusedElement }: LayoutNodeArgs) {
   switch (node.type) {
     case "root":
       return rootBox(ctx, node)
     case "terminal":
-      return terminalBox(ctx, node.itemName, node.requiredAmount)
+      if (node.itemType === "fluid") {
+        return terminalBox({ ctx, node, focusedElement })
+      }
+      return terminalBox({ ctx, node, focusedElement })
   }
 }
