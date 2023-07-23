@@ -1,4 +1,4 @@
-import { Recipe, normalizeRecipeItem, recipeIngredients } from "./recipe"
+import type { Recipe } from "./recipe"
 
 export type NodeID = number & { readonly $tag: unique symbol }
 
@@ -7,9 +7,17 @@ export type RootNode = {
   type: "root"
   recipe: Recipe
   desiredProduction: number
-  assemblyMachineTier: AssemblerTier
+  assemblerTier: AssemblerTier
 }
 export type AssemblerTier = 1 | 2 | 3
+
+export type IntermediateNode = {
+  id: NodeID
+  type: "intermediate"
+  recipe: Recipe
+  assemblerTier: AssemblerTier
+  desiredProduction: number
+}
 
 export type TerminalNode = {
   id: NodeID
@@ -19,12 +27,12 @@ export type TerminalNode = {
   requiredAmount: number
 }
 
-export type RecipeNode = RootNode | TerminalNode
+export type RecipeNode = RootNode | IntermediateNode | TerminalNode
 
 export type NextNodeID = string & { readonly $tag: unique symbol }
 
 export type RecipeGraph = {
-  nodes: RecipeNode[]
+  nodes: Map<NodeID, RecipeNode>
   vertices: Map<NodeID, NodeID[]>
   nodeDepth: Map<NodeID, number> 
   nodesOnLevel: number[]
@@ -40,8 +48,8 @@ export function assemblerCount(
   desiredProduction: number,
   tier: AssemblerTier,
 ) {
-  const craftingTime = recipe.energy_required ?? 0.5
-  const resultCount = recipe.result_count ?? 1
+  const craftingTime = recipe.energyRequired
+  const resultCount = recipe.results[0].amount
   return (craftingTime * desiredProduction) / resultCount / tier
 }
 
@@ -56,17 +64,15 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
       type: "root",
       recipe: rootRecipe,
       desiredProduction: 2,
-      assemblyMachineTier: 1,
+      assemblerTier: 1,
   }
 
-  const nodes: RecipeNode[] = [rootNode]
-
-  const craftingTime = rootRecipe.energy_required ?? 0.5
+  const craftingTime = rootRecipe.energyRequired
   const assemblers = assemblerCount(rootRecipe, 2, 1)
 
-  for (const ingredient of recipeIngredients(rootRecipe)) {
-    const { name, type, amount } = normalizeRecipeItem(ingredient)
-    nodes.push({
+  const children: RecipeNode[] = []
+  for (const { name, type, amount } of rootRecipe.ingredients) {
+    children.push({
       id: nextNodeID(),
       type: "terminal",
       itemName: name,
@@ -75,14 +81,57 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
     })
   }
 
-  const subnodes = nodes.slice(1)
-  const nodeDepth = new Map(subnodes.map(node => [node.id, 1]))
+  const nodeDepth = new Map(children.map(node => [node.id, 1]))
   nodeDepth.set(rootNode.id, 0)
+
+  const nodes = new Map()
+  nodes.set(rootNode.id, rootNode)
+  for (const node of children) {
+    nodes.set(node.id, node)
+  }
 
   return {
     nodes,
-    vertices: new Map(subnodes.map(node => [rootNode.id, [node.id]])),
+    vertices: new Map(children.map(node => [rootNode.id, [node.id]])),
     nodeDepth,
-    nodesOnLevel: [1, nodes.length - 1],
+    nodesOnLevel: [1, children.length],
   }
+}
+
+/** NOTE: Mutates graph parameter passed in */
+export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
+  const prevNode = graph.nodes.get(nodeID)
+  if (!prevNode || prevNode.type !== "terminal") return "unsupported-node" as const
+
+  const depth = graph.nodeDepth.get(nodeID) ?? 0
+
+  const replacementNode: IntermediateNode = {
+    id: prevNode.id,
+    type: "intermediate",
+    recipe,
+    assemblerTier: 1,
+    desiredProduction: prevNode.requiredAmount,
+  }
+
+  const childIds: NodeID[] = []
+  for (const { name, type, amount } of recipe.ingredients) {
+    const child: TerminalNode = {
+      id: nextNodeID(),
+      type: "terminal",
+      itemName: name,
+      itemType: type,
+      requiredAmount: prevNode.requiredAmount * amount,
+    }
+    graph.nodes.set(child.id, child)
+    graph.nodeDepth.set(child.id, depth + 1)
+    childIds.push(child.id)
+  }
+
+  graph.nodes.set(replacementNode.id, replacementNode)
+  graph.vertices.set(nodeID, childIds)
+  graph.nodeDepth.set(replacementNode.id, depth)
+  if (depth === graph.nodesOnLevel.length - 1) {
+    graph.nodesOnLevel.push(0)
+  } 
+  graph.nodesOnLevel[depth + 1] += childIds.length
 }

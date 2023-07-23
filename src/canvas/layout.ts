@@ -109,14 +109,14 @@ export function rootBox(
   const productionLine = `Desired production rate: ${node.desiredProduction} per second`
   const productionLineMeasures = text(ctx, productionLine, computedFonts.body)
 
-  const craftingTime = `Crafting time: ${node.recipe.energy_required ?? 0.5}s`
+  const craftingTime = `Crafting time: ${node.recipe.energyRequired}s`
   const craftingTimeMeasures = text(ctx, craftingTime, computedFonts.body)
 
   const assemblersRequired = `Assemblers required: ${numberFormat.format(
     assemblerCount(
       node.recipe,
       node.desiredProduction,
-      node.assemblyMachineTier,
+      node.assemblerTier,
     ),
   )}`
   const assemblersRequiredMeasures = text(
@@ -261,7 +261,7 @@ export function rootBox(
       },
       {
         type: "icon",
-        name: `assembling-machine-${node.assemblyMachineTier}`,
+        name: `assembling-machine-${node.assemblerTier}`,
         layout: {
           x: BOX_PADDING + BOX_CONTENT_PADDING + BUTTON_PADDING,
           y:
@@ -476,5 +476,7 @@ export function node({ ctx, node, focusedElement }: LayoutNodeArgs) {
         return terminalBox({ ctx, node, focusedElement })
       }
       return terminalBox({ ctx, node, focusedElement })
+    case "intermediate":
+      throw new Error("not implemented")
   }
 }

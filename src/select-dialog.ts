@@ -1,12 +1,4 @@
-import {
-  Recipe,
-  NormalizedRecipeItem,
-  recipes,
-  recipeMap,
-  recipeName,
-  t,
-  recipeIngredients,
-} from "./recipe"
+import { Recipe, recipes, recipeMap, recipeName, t, RecipeItem } from "./recipe"
 import { iconForItem, iconNameForRecipe, prepareIconWithName } from "./icon"
 
 function recipeButton(recipe: Recipe, signal?: AbortSignal) {
@@ -83,10 +75,10 @@ export function initSelectionDialog({
         }
         dialog.addEventListener("animationend", handleAnimationEnd)
       },
-      { once: true }
+      { once: true },
     )
     form.append(
-      ...recipes.map(recipe => recipeButton(recipe, controller.signal))
+      ...recipes.map(recipe => recipeButton(recipe, controller.signal)),
     )
   }
 
@@ -95,10 +87,10 @@ export function initSelectionDialog({
     const tooltip = dialog.querySelector(".recipe-tooltip") as HTMLDivElement
     const title = tooltip.querySelector(".tooltip-title") as HTMLDivElement
     const ingredients = tooltip.querySelector(
-      ".tooltip-ingredients-list"
+      ".tooltip-ingredients-list",
     ) as HTMLDivElement
     const craftingTime = tooltip.querySelector(
-      ".tooltip-crafting-time-value"
+      ".tooltip-crafting-time-value",
     ) as HTMLDivElement
 
     let currentRecipe: Recipe | undefined
@@ -154,17 +146,17 @@ export function initSelectionDialog({
 
       tooltip.classList.remove("hidden")
       title.textContent = recipeName(newRecipe)
-      craftingTime.textContent = `${newRecipe.energy_required ?? 0.5}s`
+      craftingTime.textContent = `${newRecipe.energyRequired}s`
 
       ingredients.innerHTML = ""
       ingredients.append(
-        ...recipeIngredients(newRecipe).map(recipe => ingredient(recipe))
+        ...newRecipe.ingredients.map(ingredient),
       )
     }
   }
 }
 
-function ingredient(ingredient: NormalizedRecipeItem) {
+function ingredient(ingredient: RecipeItem) {
   const container = document.createElement("div")
   container.classList.add("tooltip-ingredient")
 

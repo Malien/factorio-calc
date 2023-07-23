@@ -16,7 +16,7 @@ type VisualNode = Offset2D & {
   externalElements: ExistingExternalElement[]
 }
 
-type CanvasOutEvent = { type: "action"; action: Action }
+type CanvasOutEvent = Action
 type CanvasInEvent =
   | { type: "update-graph"; graph: RecipeGraph }
   | { type: "deinit" }
@@ -137,7 +137,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     }
     const layoutNodes: LayoutNode[] = []
 
-    for (const node of graph.nodes) {
+    for (const node of graph.nodes.values()) {
       const level = graph.nodeDepth.get(node.id)!
 
       const { bbox, contents, dragbox, externalElements } = layout.node({
@@ -240,7 +240,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
         if (activate) {
           const handleClick = () => {
-            localPort.postMessage({ type: "action", action: activate })
+            localPort.postMessage(activate)
           }
           button.addEventListener("click", handleClick)
           listeners.push({ type: "click", listener: handleClick })
@@ -360,10 +360,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
         anchor: { x: x - box.dx, y: y - box.dy },
       })
     } else if (type === "region" && box.interactivity.click) {
-      localPort.postMessage({
-        type: "action",
-        action: box.interactivity.click,
-      })
+      localPort.postMessage(box.interactivity.click)
     }
   }
 
