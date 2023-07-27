@@ -8,7 +8,7 @@ import {
   computeFont,
 } from "./common"
 import * as layout from "./layout"
-import type { Action, NodeID, RecipeGraph, RecipeNode } from "../graph"
+import { Action, NodeID, RecipeGraph, RecipeNode, emptyGraph } from "../graph"
 
 type ExistingExternalElement = ExternalElement & { element: HTMLElement }
 
@@ -29,12 +29,7 @@ type CanvasInEvent =
 
 const LEVEL_OFFSET = 50
 const MIN_NODE_SPACING = 20
-const MIN_OFFSET = -500
-const MAX_OFFSET = 500
-
-function clampOffset(offset: number) {
-  return Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, offset))
-}
+const OFFSCREEN_OFFSET = 100
 
 class LightweightAbortSignal {
   private _version = 0
@@ -48,6 +43,8 @@ class LightweightAbortSignal {
 
 const MAX_SCALE = 2
 const MIN_SCALE = 0.25
+const LINE_WIDTH = 10
+const LINE_COLOR = "#888888"
 
 type DrawIconArgs = {
   ctx: CanvasRenderingContext2D
@@ -107,6 +104,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   }
 
   const nodes = new Map<NodeID, VisualNode>()
+  let graph = emptyGraph()
   const interactiveRegions = new Map<NodeID, InteractiveRegion[]>()
 
   let frameInvalidated = false
@@ -122,6 +120,35 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
   function draw() {
     ctx.clearRect(0, 0, cssWidth, cssHeight)
+
+    for (const [fromVertex, toVertices] of graph.edges) {
+      const fromBox = nodes.get(fromVertex)
+      if (!fromBox) {
+        console.warn("Missing node for vertex", fromVertex)
+        continue
+      }
+      const start = {
+        x: (globalOffset.dx + fromBox.dx + fromBox.bbox.width / 2) * scale,
+        y: (globalOffset.dy + fromBox.dy + fromBox.bbox.height / 2) * scale,
+      }
+      for (const toVertex of toVertices) {
+        const toBox = nodes.get(toVertex)
+        if (!toBox) {
+          console.warn("Missing node for vertex", toVertex)
+          continue
+        }
+        const end = {
+          x: (globalOffset.dx + toBox.dx + toBox.bbox.width / 2) * scale,
+          y: (globalOffset.dy + toBox.dy + toBox.bbox.height / 2) * scale,
+        }
+        ctx.beginPath()
+        ctx.moveTo(start.x, start.y)
+        ctx.lineWidth = LINE_WIDTH * scale
+        ctx.strokeStyle = LINE_COLOR
+        ctx.lineTo(end.x, end.y)
+        ctx.stroke()
+      }
+    }
 
     for (const node of nodes.values()) {
       for (const widget of node.contents) {
@@ -176,10 +203,10 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       x: gestureStartPos.x * (ev.scale - 1),
       y: gestureStartPos.y * (ev.scale - 1),
     }
-    globalOffset.dx = clampOffset(
+    globalOffset.dx = clampOffsetX(
       capturedGlobalOffset.dx - pointDelta.x / scale,
     )
-    globalOffset.dy = clampOffset(
+    globalOffset.dy = clampOffsetY(
       capturedGlobalOffset.dy - pointDelta.y / scale,
     )
     invalidateFrame()
@@ -187,8 +214,6 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
   function handleGestureEnd(ev: webkit.GestureEvent) {
     ev.preventDefault()
-    // scale = 1
-    // globalOffset = capturedGlobalOffset
     invalidateFrame()
   }
 
@@ -220,9 +245,11 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     presentExternalElements.clear()
   }
 
-  function updateGraph(graph: RecipeGraph) {
-    const levelHeight = Array(graph.nodesOnLevel.length).fill(0)
-    const levelWidth = Array(graph.nodesOnLevel.length).fill(-MIN_NODE_SPACING)
+  function updateGraph(newGraph: RecipeGraph) {
+    const levelHeight = Array(newGraph.nodesOnLevel.length).fill(0)
+    const levelWidth = Array(newGraph.nodesOnLevel.length).fill(
+      -MIN_NODE_SPACING,
+    )
     type LayoutNode = {
       node: RecipeNode
       bbox: { width: number; height: number }
@@ -230,9 +257,10 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       contents: Widget[]
     }
     const layoutNodes: LayoutNode[] = []
+    graph = newGraph
 
-    for (const node of graph.nodes.values()) {
-      const level = graph.nodeDepth.get(node.id)!
+    for (const node of newGraph.nodes.values()) {
+      const level = newGraph.nodeDepth.get(node.id)!
 
       const { bbox, contents, dragbox, externalElements } = layout.node({
         ctx,
@@ -248,9 +276,9 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
     nodes.clear()
     interactiveRegions.clear()
-    const nodesPlacedByLevel = Array(graph.nodesOnLevel.length).fill(0)
+    const nodesPlacedByLevel = Array(newGraph.nodesOnLevel.length).fill(0)
     for (const { node, bbox, contents, dragbox } of layoutNodes) {
-      const level = graph.nodeDepth.get(node.id)!
+      const level = newGraph.nodeDepth.get(node.id)!
 
       let offset = 0
       for (let i = 0; i < level; i++) {
@@ -282,6 +310,10 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       })
     }
 
+    fullBBox = nodes
+      .values()
+      .map(node => node.bbox)
+      .reduce(composeBoxes, { width: 0, height: 0 })
     invalidateFrame()
   }
 
@@ -386,6 +418,11 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     }
   }
 
+  function invalidateComposition(ofNode: VisualNode) {
+    fullBBox = composeBoxes(fullBBox, ofNode.bbox)
+    invalidateFrame()
+  }
+
   function invalidateLayout(ofNode: NodeID) {
     const visualNode = nodes.get(ofNode)
     if (!visualNode) return
@@ -397,7 +434,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     updateExternalElements(ofNode, externalElements)
     visualNode.bbox = bbox
     visualNode.contents = contents
-    invalidateFrame()
+    invalidateComposition(visualNode)
   }
 
   type PointerState = {
@@ -430,7 +467,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       prevState.box.dx = x - prevState.anchor.x
       prevState.box.dy = y - prevState.anchor.y
       newCursor = "move"
-      invalidateFrame()
+      invalidateComposition(prevState.box)
     }
 
     if (newCursor !== cursor) {
@@ -464,8 +501,8 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
   function handleWheel(ev: WheelEvent) {
     ev.preventDefault()
-    globalOffset.dx = clampOffset(globalOffset.dx - ev.deltaX)
-    globalOffset.dy = clampOffset(globalOffset.dy - ev.deltaY)
+    globalOffset.dx = clampOffsetX(globalOffset.dx - ev.deltaX)
+    globalOffset.dy = clampOffsetY(globalOffset.dy - ev.deltaY)
     invalidateFrame()
   }
 
@@ -491,6 +528,18 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     }
 
     return ["none"] as const
+  }
+
+  let fullBBox = { width: 0, height: 0 }
+  function clampOffsetX(offset: number) {
+    const min = -fullBBox.width + OFFSCREEN_OFFSET - cssWidth / 2
+    const max = fullBBox.width - OFFSCREEN_OFFSET + cssWidth / 2
+    return Math.max(min, Math.min(max, offset))
+  }
+  function clampOffsetY(offset: number) {
+    const min = -fullBBox.height + OFFSCREEN_OFFSET - cssHeight / 2
+    const max = fullBBox.height - OFFSCREEN_OFFSET + cssHeight / 2
+    return Math.max(min, Math.min(max, offset))
   }
 
   return remotePort
@@ -644,5 +693,13 @@ function drawWidget({
       2 * Math.PI,
     )
     ctx.fill()
+  }
+}
+
+type Size = { width: number; height: number }
+function composeBoxes(a: Size, b: Size) {
+  return {
+    width: Math.max(a.width, b.width),
+    height: Math.max(a.height, b.height),
   }
 }

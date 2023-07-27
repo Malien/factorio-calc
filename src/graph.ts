@@ -34,9 +34,18 @@ export type NextNodeID = string & { readonly $tag: unique symbol }
 
 export type RecipeGraph = {
   nodes: Map<NodeID, RecipeNode>
-  vertices: Map<NodeID, NodeID[]>
-  nodeDepth: Map<NodeID, number> 
+  edges: Map<NodeID, NodeID[]>
+  nodeDepth: Map<NodeID, number>
   nodesOnLevel: number[]
+}
+
+export function emptyGraph(): RecipeGraph {
+  return {
+    nodes: new Map(),
+    edges: new Map(),
+    nodeDepth: new Map(),
+    nodesOnLevel: [],
+  }
 }
 
 export type Action = {
@@ -61,11 +70,11 @@ export function nextNodeID(): NodeID {
 
 export function initialGraph(rootRecipe: Recipe): RecipeGraph {
   const rootNode: RootNode = {
-      id: nextNodeID(),
-      type: "root",
-      recipe: rootRecipe,
-      desiredProduction: 2,
-      assemblerTier: 1,
+    id: nextNodeID(),
+    type: "root",
+    recipe: rootRecipe,
+    desiredProduction: 2,
+    assemblerTier: 1,
   }
 
   const craftingTime = rootRecipe.energyRequired
@@ -94,7 +103,7 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
 
   return {
     nodes,
-    vertices: new Map(children.map(node => [rootNode.id, [node.id]])),
+    edges: new Map([[rootNode.id, children.map(node => node.id)]]),
     nodeDepth,
     nodesOnLevel: [1, children.length],
   }
@@ -103,7 +112,8 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
 /** NOTE: Mutates graph parameter passed in */
 export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
   const prevNode = graph.nodes.get(nodeID)
-  if (!prevNode || prevNode.type !== "terminal") return "unsupported-node" as const
+  if (!prevNode || prevNode.type !== "terminal")
+    return "unsupported-node" as const
 
   const depth = graph.nodeDepth.get(nodeID) ?? 0
 
@@ -131,10 +141,10 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
   }
 
   graph.nodes.set(replacementNode.id, replacementNode)
-  graph.vertices.set(nodeID, childIds)
+  graph.edges.set(nodeID, childIds)
   graph.nodeDepth.set(replacementNode.id, depth)
   if (depth === graph.nodesOnLevel.length - 1) {
     graph.nodesOnLevel.push(0)
-  } 
+  }
   graph.nodesOnLevel[depth + 1] += childIds.length
 }
