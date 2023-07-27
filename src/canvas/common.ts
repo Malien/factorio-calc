@@ -10,7 +10,7 @@ type WidgetKind =
       type: "text"
       text: string
       color: Color
-      font: ComputedFont
+      font: Font
       baseline: number
     }
   | { type: "box"; bg: Color }
@@ -27,3 +27,14 @@ export type ExternalElement = {
   activate?: Action
   title?: string
 }
+
+export type Font = {
+  family: string
+  size: number
+  weight: number
+}
+
+export function computeFont(font: Font) {
+  return `${font.weight} ${font.size}px ${font.family}` as ComputedFont
+}
+

@@ -2,12 +2,14 @@ import { RecipeNode, RootNode, TerminalNode, assemblerCount } from "../graph"
 import { iconNameForRecipe } from "../icon"
 import { t } from "../recipe"
 import { recipeName } from "../recipe"
-import type {
+import {
   Color,
   ComputedFont,
   ExternalElement,
+  Font,
   Rect,
   Widget,
+  computeFont,
 } from "./common"
 
 const BOX_PADDING = 8
@@ -21,12 +23,6 @@ const REQUIRED_AMOUNT_MARGIN = 24
 const EXPAND_BUTTON_SIZE = 24
 const EXPAND_BUTTON_MARGIN = 4
 const TERMINAL_BOX_BOTTOM_PADDING = 4
-
-type Font = {
-  family: string
-  size: number
-  weight: number
-}
 
 const TITLE_FONT = {
   family: "sans-serif",
@@ -53,10 +49,6 @@ const TITLE_COLOR = "rgb(255, 231, 190)" as Color
 const TEXT_COLOR = "white" as Color
 const REQUIRED_AMOUNT_COLOR = "#ccc" as Color
 const FOCUS_COLOR = "#005fdf" as Color
-
-function computeFont(font: Font) {
-  return `${font.weight} ${font.size}px ${font.family}` as ComputedFont
-}
 
 const computedFonts = {
   title: computeFont(TITLE_FONT),
@@ -113,11 +105,7 @@ export function rootBox(
   const craftingTimeMeasures = text(ctx, craftingTime, computedFonts.body)
 
   const assemblersRequired = `Assemblers required: ${numberFormat.format(
-    assemblerCount(
-      node.recipe,
-      node.desiredProduction,
-      node.assemblerTier,
-    ),
+    assemblerCount(node.recipe, node.desiredProduction, node.assemblerTier),
   )}`
   const assemblersRequiredMeasures = text(
     ctx,
@@ -193,7 +181,7 @@ export function rootBox(
       {
         type: "text",
         text: name,
-        font: computedFonts.title,
+        font: TITLE_FONT,
         color: TITLE_COLOR,
         baseline: titleMeasures.baseline,
         layout: {
@@ -206,7 +194,7 @@ export function rootBox(
       {
         type: "text",
         text: productionLine,
-        font: computedFonts.body,
+        font: BODY_FONT,
         color: TEXT_COLOR,
         baseline: productionLineMeasures.baseline,
         layout: {
@@ -223,7 +211,7 @@ export function rootBox(
       {
         type: "text",
         text: craftingTime,
-        font: computedFonts.body,
+        font: BODY_FONT,
         color: TEXT_COLOR,
         baseline: craftingTimeMeasures.baseline,
         layout: {
@@ -283,7 +271,7 @@ export function rootBox(
       {
         type: "text",
         text: assemblersRequired,
-        font: computedFonts.body,
+        font: BODY_FONT,
         color: TEXT_COLOR,
         baseline: assemblersRequiredMeasures.baseline,
         layout: {
@@ -339,125 +327,213 @@ export function terminalBox({
     ICON_SIZE,
   )
 
-  const expandPlusMeasures = text(ctx, "+", computedFonts.body)
+  const iconName =
+    node.itemType === "fluid" ? `fluid/${node.itemName}` : node.itemName
 
-  const dragbox = {
-    x: 0,
-    y: 0,
-    width:
-      BOX_PADDING * 2 +
-      ICON_SIZE +
-      ICON_MARGIN +
-      nameMeasures.width +
-      REQUIRED_AMOUNT_MARGIN +
-      requiredAmountMeasures.width,
-    height: BOX_PADDING * 2 + lineHeight + TERMINAL_BOX_BOTTOM_PADDING,
+  if (node.producedByRecipes.length === 1) {
+    return expandableTerminalBox()
+  } else return nonExpandableTerminalBox()
+
+  function expandableTerminalBox(): LayoutResult {
+    const expandPlusMeasures = text(ctx, "+", computedFonts.body)
+
+    const dragbox = {
+      x: 0,
+      y: 0,
+      width:
+        BOX_PADDING * 2 +
+        ICON_SIZE +
+        ICON_MARGIN +
+        nameMeasures.width +
+        REQUIRED_AMOUNT_MARGIN +
+        requiredAmountMeasures.width,
+      height: BOX_PADDING * 2 + lineHeight + TERMINAL_BOX_BOTTOM_PADDING,
+    }
+
+    const bbox = {
+      width: dragbox.width,
+      height: dragbox.height + EXPAND_BUTTON_MARGIN + EXPAND_BUTTON_SIZE / 2,
+    }
+
+    return {
+      dragbox,
+      bbox,
+      externalElements: {
+        expand: {
+          tag: "button",
+          activate: { type: "expand", node: node.id },
+          title: "expand recipe",
+        },
+      },
+      contents: [
+        {
+          type: "box",
+          bg: BOX_BG,
+          layout: {
+            x: 0,
+            y: 0,
+            width: dragbox.width,
+            height: dragbox.height,
+          },
+        },
+        {
+          type: "icon",
+          name: iconName,
+          layout: {
+            x: BOX_PADDING,
+            y: BOX_PADDING + lineHeight / 2 - ICON_SIZE / 2,
+            width: ICON_SIZE,
+            height: ICON_SIZE,
+          },
+        },
+        {
+          type: "text",
+          text: name,
+          font: TITLE_FONT,
+          color: TITLE_COLOR,
+          baseline: nameMeasures.baseline,
+          layout: {
+            x: BOX_PADDING + ICON_SIZE + ICON_MARGIN,
+            y: BOX_PADDING + lineHeight / 2 - nameMeasures.height / 2,
+            width: nameMeasures.width,
+            height: nameMeasures.height,
+          },
+        },
+        {
+          type: "text",
+          text: requiredAmountText,
+          font: REQUIRED_AMOUNT_FONT,
+          color: REQUIRED_AMOUNT_COLOR,
+          baseline: requiredAmountMeasures.baseline,
+          layout: {
+            x:
+              BOX_PADDING +
+              ICON_SIZE +
+              ICON_MARGIN +
+              nameMeasures.width +
+              REQUIRED_AMOUNT_MARGIN,
+            y: BOX_PADDING,
+            width: requiredAmountMeasures.width,
+            height: requiredAmountMeasures.height,
+          },
+        },
+        {
+          type: "ellipse",
+          bg: focusedElement === "expand" ? FOCUS_COLOR : BOX_BG,
+          layout: {
+            x:
+              dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
+            y: dragbox.height - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
+            width: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
+            height: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
+          },
+        },
+        {
+          type: "ellipse",
+          bg: BUTTON_BG,
+          layout: {
+            x: dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2,
+            y: dragbox.height - EXPAND_BUTTON_SIZE / 2,
+            width: EXPAND_BUTTON_SIZE,
+            height: EXPAND_BUTTON_SIZE,
+          },
+          interactivity: {
+            click: { type: "expand", node: node.id },
+          },
+        },
+        {
+          type: "text",
+          text: "+",
+          font: BODY_FONT,
+          color: TEXT_COLOR,
+          baseline: expandPlusMeasures.baseline,
+          layout: {
+            x: dragbox.width / 2 - expandPlusMeasures.width / 2,
+            y: dragbox.height - expandPlusMeasures.height / 2,
+            width: expandPlusMeasures.width,
+            height: expandPlusMeasures.height,
+          },
+        },
+      ],
+    }
   }
 
-  const bbox = {
-    width: dragbox.width,
-    height: dragbox.height + EXPAND_BUTTON_MARGIN + EXPAND_BUTTON_SIZE / 2,
-  }
+  function nonExpandableTerminalBox(): LayoutResult {
+    const bbox = {
+      width:
+        BOX_PADDING * 2 +
+        ICON_SIZE +
+        ICON_MARGIN +
+        nameMeasures.width +
+        REQUIRED_AMOUNT_MARGIN +
+        requiredAmountMeasures.width,
+      height: BOX_PADDING * 2 + lineHeight,
+    }
 
-  return {
-    dragbox,
-    bbox,
-    externalElements: {
-      expand: {
-        tag: "button",
-        activate: { type: "expand", node: node.id },
-        title: "expand recipe",
-      },
-    },
-    contents: [
-      {
-        type: "box",
-        bg: BOX_BG,
-        layout: {
-          x: 0,
-          y: 0,
-          width: dragbox.width,
-          height: dragbox.height,
+    return {
+      dragbox: { x: 0, y: 0, width: bbox.width, height: bbox.height },
+      bbox,
+      externalElements: {
+        expand: {
+          tag: "button",
+          activate: { type: "expand", node: node.id },
+          title: "expand recipe",
         },
       },
-      {
-        type: "icon",
-        name: node.itemName,
-        layout: {
-          x: BOX_PADDING,
-          y: BOX_PADDING + lineHeight / 2 - ICON_SIZE / 2,
-          width: ICON_SIZE,
-          height: ICON_SIZE,
+      contents: [
+        {
+          type: "box",
+          bg: BOX_BG,
+          layout: {
+            x: 0,
+            y: 0,
+            width: bbox.width,
+            height: bbox.height,
+          },
         },
-      },
-      {
-        type: "text",
-        text: name,
-        font: computedFonts.title,
-        color: TITLE_COLOR,
-        baseline: nameMeasures.baseline,
-        layout: {
-          x: BOX_PADDING + ICON_SIZE + ICON_MARGIN,
-          y: BOX_PADDING + lineHeight / 2 - nameMeasures.height / 2,
-          width: nameMeasures.width,
-          height: nameMeasures.height,
+        {
+          type: "icon",
+          name: iconName,
+          layout: {
+            x: BOX_PADDING,
+            y: BOX_PADDING + lineHeight / 2 - ICON_SIZE / 2,
+            width: ICON_SIZE,
+            height: ICON_SIZE,
+          },
         },
-      },
-      {
-        type: "text",
-        text: requiredAmountText,
-        font: computedFonts.requiredAmount,
-        color: REQUIRED_AMOUNT_COLOR,
-        baseline: requiredAmountMeasures.baseline,
-        layout: {
-          x:
-            BOX_PADDING +
-            ICON_SIZE +
-            ICON_MARGIN +
-            nameMeasures.width +
-            REQUIRED_AMOUNT_MARGIN,
-          y: BOX_PADDING,
-          width: requiredAmountMeasures.width,
-          height: requiredAmountMeasures.height,
+        {
+          type: "text",
+          text: name,
+          font: TITLE_FONT,
+          color: TITLE_COLOR,
+          baseline: nameMeasures.baseline,
+          layout: {
+            x: BOX_PADDING + ICON_SIZE + ICON_MARGIN,
+            y: BOX_PADDING + lineHeight / 2 - nameMeasures.height / 2,
+            width: nameMeasures.width,
+            height: nameMeasures.height,
+          },
         },
-      },
-      {
-        type: "ellipse",
-        bg: focusedElement === "expand" ? FOCUS_COLOR : BOX_BG,
-        layout: {
-          x: dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
-          y: dragbox.height - EXPAND_BUTTON_SIZE / 2 - EXPAND_BUTTON_MARGIN,
-          width: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
-          height: EXPAND_BUTTON_SIZE + EXPAND_BUTTON_MARGIN * 2,
+        {
+          type: "text",
+          text: requiredAmountText,
+          font: REQUIRED_AMOUNT_FONT,
+          color: REQUIRED_AMOUNT_COLOR,
+          baseline: requiredAmountMeasures.baseline,
+          layout: {
+            x:
+              BOX_PADDING +
+              ICON_SIZE +
+              ICON_MARGIN +
+              nameMeasures.width +
+              REQUIRED_AMOUNT_MARGIN,
+            y: BOX_PADDING,
+            width: requiredAmountMeasures.width,
+            height: requiredAmountMeasures.height,
+          },
         },
-      },
-      {
-        type: "ellipse",
-        bg: BUTTON_BG,
-        layout: {
-          x: dragbox.width / 2 - EXPAND_BUTTON_SIZE / 2,
-          y: dragbox.height - EXPAND_BUTTON_SIZE / 2,
-          width: EXPAND_BUTTON_SIZE,
-          height: EXPAND_BUTTON_SIZE,
-        },
-        interactivity: {
-          click: { type: "expand", node: node.id },
-        },
-      },
-      {
-        type: "text",
-        text: "+",
-        font: computedFonts.body,
-        color: TEXT_COLOR,
-        baseline: expandPlusMeasures.baseline,
-        layout: {
-          x: dragbox.width / 2 - expandPlusMeasures.width / 2,
-          y: dragbox.height - expandPlusMeasures.height / 2,
-          width: expandPlusMeasures.width,
-          height: expandPlusMeasures.height,
-        },
-      },
-    ],
+      ],
+    }
   }
 }
 
@@ -472,11 +548,19 @@ export function node({ ctx, node, focusedElement }: LayoutNodeArgs) {
     case "root":
       return rootBox(ctx, node)
     case "terminal":
-      if (node.itemType === "fluid") {
-        return terminalBox({ ctx, node, focusedElement })
-      }
       return terminalBox({ ctx, node, focusedElement })
     case "intermediate":
-      throw new Error("not implemented")
+      return terminalBox({
+        ctx,
+        node: {
+          type: "terminal",
+          id: node.id,
+          itemName: node.recipe.results[0].name,
+          itemType: node.recipe.results[0].type,
+          requiredAmount: node.desiredProduction,
+          producedByRecipes: [],
+        },
+        focusedElement,
+      })
   }
 }

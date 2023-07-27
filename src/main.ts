@@ -34,14 +34,22 @@ canvasPort.addEventListener("message", event => {
     return
   }
   const node = graph.nodes.get(event.data.node)
-  if (!node || node.type !== "terminal") {
-    console.error("Invalid node ID", event.data.node)
+  if (!node) {
+    console.error("Node with id doesn't exist", event.data.node)
+    return
+  }
+  if (node.type !== "terminal") {
+    console.error("Selected node is not terminal", node)
     return
   }
 
   const recipe = recipesForResult(node.itemType, node.itemName)
+  if (recipe.length === 0) {
+    console.error("No recipes found for", node.itemType, node.itemName)
+    return
+  }
   if (recipe.length !== 1) {
-    console.error("Multiple or none recipes found for", node.itemType, node.itemName)
+    console.error("Multiple recipes found for", node.itemType, node.itemName)
     return
   }
 

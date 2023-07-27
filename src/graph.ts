@@ -1,4 +1,4 @@
-import type { Recipe } from "./recipe"
+import { Recipe, recipesForResult } from "./recipe"
 
 export type NodeID = number & { readonly $tag: unique symbol }
 
@@ -25,6 +25,7 @@ export type TerminalNode = {
   itemName: string
   itemType: "item" | "fluid"
   requiredAmount: number
+  producedByRecipes: Recipe[]
 }
 
 export type RecipeNode = RootNode | IntermediateNode | TerminalNode
@@ -78,6 +79,7 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
       itemName: name,
       itemType: type,
       requiredAmount: (assemblers * amount) / craftingTime,
+      producedByRecipes: recipesForResult(type, name),
     })
   }
 
@@ -121,6 +123,7 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
       itemName: name,
       itemType: type,
       requiredAmount: prevNode.requiredAmount * amount,
+      producedByRecipes: recipesForResult(type, name),
     }
     graph.nodes.set(child.id, child)
     graph.nodeDepth.set(child.id, depth + 1)

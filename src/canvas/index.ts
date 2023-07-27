@@ -1,6 +1,12 @@
 import { TypedMessageChannel } from "../typed-channel"
 import { iconURLForName } from "../icon"
-import type { ExternalElement, Interactivity, Rect, Widget } from "./common"
+import {
+  ExternalElement,
+  Interactivity,
+  Rect,
+  Widget,
+  computeFont,
+} from "./common"
 import * as layout from "./layout"
 import type { Action, NodeID, RecipeGraph, RecipeNode } from "../graph"
 
@@ -23,6 +29,12 @@ type CanvasInEvent =
 
 const LEVEL_OFFSET = 50
 const MIN_NODE_SPACING = 20
+const MIN_OFFSET = -500
+const MAX_OFFSET = 500
+
+function clampOffset(offset: number) {
+  return Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, offset))
+}
 
 class LightweightAbortSignal {
   private _version = 0
@@ -33,6 +45,9 @@ class LightweightAbortSignal {
     this._version = (this._version + 1) | 0
   }
 }
+
+const MAX_SCALE = 2
+const MIN_SCALE = 0.25
 
 type DrawIconArgs = {
   ctx: CanvasRenderingContext2D
@@ -46,6 +61,25 @@ type DrawIconArgs = {
 type InteractiveRegion = {
   interactivity: Interactivity
   layout: Rect
+}
+
+namespace webkit {
+  export interface GestureEvent extends UIEvent {
+    readonly rotation: number
+    readonly scale: number
+    readonly pageX: number
+    readonly pageY: number
+    readonly clientX: number
+    readonly clientY: number
+  }
+}
+
+declare global {
+  interface HTMLElementEventMap {
+    gesturestart: webkit.GestureEvent
+    gesturechange: webkit.GestureEvent
+    gestureend: webkit.GestureEvent
+  }
 }
 
 export function initCanvas(canvas: HTMLCanvasElement) {
@@ -83,13 +117,24 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     Record<string, ExistingExternalElement>
   >()
   let elementInFocus: [node: NodeID, elementKey: string] | undefined = undefined
+  let globalOffset = { dx: 0, dy: 0 }
+  let scale = 1
 
   function draw() {
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
     for (const node of nodes.values()) {
       for (const widget of node.contents) {
-        drawWidget(ctx, node, widget, abortSignal)
+        drawWidget({
+          ctx,
+          offset: {
+            dx: node.dx + globalOffset.dx,
+            dy: node.dy + globalOffset.dy,
+          },
+          widget,
+          abortSignal,
+          scale,
+        })
       }
     }
   }
@@ -103,6 +148,50 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   canvas.addEventListener("pointermove", handlePointerMove)
   canvas.addEventListener("pointerdown", handlePointerDown)
   canvas.addEventListener("pointerup", handlePointerUp)
+
+  // These are for pinch-to-zoom
+  canvas.addEventListener("gesturestart", handleGestureStart)
+  canvas.addEventListener("gesturechange", handleGestureChange)
+  canvas.addEventListener("gestureend", handleGestureEnd)
+  canvas.addEventListener("wheel", handleWheel)
+
+  let gestureStartScale = 1
+  let gestureStartPos = { x: 0, y: 0 }
+  let capturedGlobalOffset = { dx: 0, dy: 0 }
+  function handleGestureStart(ev: webkit.GestureEvent) {
+    console.debug("gesture start", ev)
+    ev.preventDefault()
+    gestureStartScale = scale
+    gestureStartPos = { x: ev.clientX, y: ev.clientY }
+    capturedGlobalOffset = { ...globalOffset }
+  }
+
+  function handleGestureChange(ev: webkit.GestureEvent) {
+    ev.preventDefault()
+    scale = Math.max(
+      MIN_SCALE,
+      Math.min(MAX_SCALE, gestureStartScale * ev.scale),
+    )
+    const pointDelta = {
+      x: gestureStartPos.x * (ev.scale - 1),
+      y: gestureStartPos.y * (ev.scale - 1),
+    }
+    globalOffset.dx = clampOffset(
+      capturedGlobalOffset.dx - pointDelta.x / scale,
+    )
+    globalOffset.dy = clampOffset(
+      capturedGlobalOffset.dy - pointDelta.y / scale,
+    )
+    invalidateFrame()
+  }
+
+  function handleGestureEnd(ev: webkit.GestureEvent) {
+    ev.preventDefault()
+    // scale = 1
+    // globalOffset = capturedGlobalOffset
+    invalidateFrame()
+  }
+
   const externalListeners = new WeakMap<HTMLElement, Listener[]>()
 
   function deinit() {
@@ -113,6 +202,11 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     canvas.removeEventListener("pointermove", handlePointerMove)
     canvas.removeEventListener("pointerdown", handlePointerDown)
     canvas.removeEventListener("pointerup", handlePointerUp)
+    canvas.removeEventListener("wheel", handleWheel)
+    canvas.removeEventListener("gesturestart", handleGestureStart)
+    canvas.removeEventListener("gesturechange", handleGestureChange)
+    canvas.removeEventListener("gestureend", handleGestureEnd)
+    canvas.removeEventListener("wheel", handleWheel)
 
     for (const elementMap of presentExternalElements.values()) {
       for (const element of Object.values(elementMap)) {
@@ -368,7 +462,18 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     pointerStates.delete(ev.pointerId)
   }
 
+  function handleWheel(ev: WheelEvent) {
+    ev.preventDefault()
+    globalOffset.dx = clampOffset(globalOffset.dx - ev.deltaX)
+    globalOffset.dy = clampOffset(globalOffset.dy - ev.deltaY)
+    invalidateFrame()
+  }
+
   function hitTest(x: number, y: number) {
+    x -= globalOffset.dx
+    y -= globalOffset.dy
+    y /= scale
+    x /= scale
     for (const node of nodes.values()) {
       if (isWithinBox(node, x, y)) {
         const regions = interactiveRegions.get(node.node.id) ?? []
@@ -482,45 +587,58 @@ function sourceIconRectForSize(size: number): [dx: number, size: number] {
   else return [95, 16]
 }
 
-function drawWidget(
-  ctx: CanvasRenderingContext2D,
-  node: VisualNode,
-  widget: Widget,
-  abortSignal?: LightweightAbortSignal,
-) {
+type DrawWidgetArgs = {
+  ctx: CanvasRenderingContext2D
+  offset: Offset2D
+  scale: number
+  widget: Widget
+  abortSignal?: LightweightAbortSignal
+}
+
+function drawWidget({
+  ctx,
+  scale,
+  offset: { dx, dy },
+  widget,
+  abortSignal,
+}: DrawWidgetArgs) {
   if (widget.type === "box") {
     ctx.fillStyle = widget.bg
     ctx.fillRect(
-      node.dx + widget.layout.x,
-      node.dy + widget.layout.y,
-      widget.layout.width,
-      widget.layout.height,
+      (dx + widget.layout.x) * scale,
+      (dy + widget.layout.y) * scale,
+      widget.layout.width * scale,
+      widget.layout.height * scale,
     )
   } else if (widget.type === "icon") {
     drawIcon({
       ctx,
       name: widget.name,
-      x: node.dx + widget.layout.x,
-      y: node.dy + widget.layout.y,
-      size: Math.min(widget.layout.width, widget.layout.height),
+      x: (dx + widget.layout.x) * scale,
+      y: (dy + widget.layout.y) * scale,
+      size: Math.min(widget.layout.width, widget.layout.height) * scale,
       signal: abortSignal,
     })
   } else if (widget.type === "text") {
     ctx.fillStyle = widget.color
-    ctx.font = widget.font
+    ctx.font = computeFont({
+      family: widget.font.family,
+      weight: widget.font.weight,
+      size: widget.font.size * scale,
+    })
     ctx.fillText(
       widget.text,
-      node.dx + widget.layout.x,
-      node.dy + widget.layout.y + widget.baseline,
+      (dx + widget.layout.x) * scale,
+      (dy + widget.layout.y + widget.baseline) * scale,
     )
   } else if (widget.type === "ellipse") {
     ctx.fillStyle = widget.bg
     ctx.beginPath()
     ctx.ellipse(
-      node.dx + widget.layout.x + widget.layout.width / 2,
-      node.dy + widget.layout.y + widget.layout.height / 2,
-      widget.layout.width / 2,
-      widget.layout.height / 2,
+      (dx + widget.layout.x + widget.layout.width / 2) * scale,
+      (dy + widget.layout.y + widget.layout.height / 2) * scale,
+      (widget.layout.width / 2) * scale,
+      (widget.layout.height / 2) * scale,
       0,
       0,
       2 * Math.PI,
