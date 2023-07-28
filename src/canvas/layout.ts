@@ -145,7 +145,7 @@ export function rootBox(
 
   return {
     bbox,
-    dragbox: { x: 0, y: 0, width: bbox.width, height: headerHeight },
+    dragbox: { x: 0, y: 0, width: bbox.width, height: headerHeight + BOX_PADDING * 2 },
     externalElements: {},
     contents: [
       {
@@ -362,7 +362,7 @@ export function terminalBox({
         expand: {
           tag: "button",
           activate: { type: "expand", node: node.id },
-          title: "expand recipe",
+          title: `Expand recipe for ${t(node.itemName)}`,
         },
       },
       contents: [
@@ -473,13 +473,7 @@ export function terminalBox({
     return {
       dragbox: { x: 0, y: 0, width: bbox.width, height: bbox.height },
       bbox,
-      externalElements: {
-        expand: {
-          tag: "button",
-          activate: { type: "expand", node: node.id },
-          title: "expand recipe",
-        },
-      },
+      externalElements: {},
       contents: [
         {
           type: "box",
