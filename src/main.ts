@@ -28,7 +28,7 @@ initSelectionDialog({
 })
 
 canvasPort.addEventListener("message", event => {
-  console.log("Received message from canvas", event.data)
+  console.info("Received message from canvas", event.data)
   if (!graph) {
     console.error("Graph not initialized")
     return

@@ -186,7 +186,6 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   let gestureStartPos = { x: 0, y: 0 }
   let capturedGlobalOffset = { dx: 0, dy: 0 }
   function handleGestureStart(ev: webkit.GestureEvent) {
-    console.debug("gesture start", ev)
     ev.preventDefault()
     gestureStartScale = scale
     gestureStartPos = { x: ev.clientX, y: ev.clientY }
@@ -300,8 +299,8 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       const horizontalOffset = nodesPlacedByLevel[level]
       nodesPlacedByLevel[level] += bbox.width + MIN_NODE_SPACING
       nodes.set(node.id, {
-        dx: cssWidth / 2 - levelWidth[level] / 2 + horizontalOffset,
-        dy: cssHeight / 4 + offset,
+        dx: -levelWidth[level] / 2 + horizontalOffset,
+        dy: offset,
         bbox,
         node,
         dragbox,
@@ -310,10 +309,11 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       })
     }
 
-    fullBBox = nodes
-      .values()
-      .map(node => node.bbox)
-      .reduce(composeBoxes, { width: 0, height: 0 })
+    fullBBox =
+      nodes.values().map(CornerRect.ofNode).reduceOpt(CornerRect.compose) ??
+      CornerRect.EMPTY
+    globalOffset.dx = cssWidth / 2 / scale
+    globalOffset.dy = cssHeight / 2 / scale - fullBBox.height / 2
     invalidateFrame()
   }
 
@@ -419,7 +419,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   }
 
   function invalidateComposition(ofNode: VisualNode) {
-    fullBBox = composeBoxes(fullBBox, ofNode.bbox)
+    fullBBox = fullBBox.compose(CornerRect.ofNode(ofNode))
     invalidateFrame()
   }
 
@@ -507,10 +507,10 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   }
 
   function hitTest(x: number, y: number) {
-    x -= globalOffset.dx
-    y -= globalOffset.dy
     y /= scale
     x /= scale
+    x -= globalOffset.dx
+    y -= globalOffset.dy
     for (const node of nodes.values()) {
       if (isWithinBox(node, x, y)) {
         const regions = interactiveRegions.get(node.node.id) ?? []
@@ -530,15 +530,15 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     return ["none"] as const
   }
 
-  let fullBBox = { width: 0, height: 0 }
+  let fullBBox: CornerRect = CornerRect.EMPTY
   function clampOffsetX(offset: number) {
-    const min = -fullBBox.width + OFFSCREEN_OFFSET - cssWidth / 2
-    const max = fullBBox.width - OFFSCREEN_OFFSET + cssWidth / 2
+    const min = -fullBBox.width + OFFSCREEN_OFFSET
+    const max = fullBBox.width - OFFSCREEN_OFFSET + cssWidth / scale
     return Math.max(min, Math.min(max, offset))
   }
   function clampOffsetY(offset: number) {
-    const min = -fullBBox.height + OFFSCREEN_OFFSET - cssHeight / 2
-    const max = fullBBox.height - OFFSCREEN_OFFSET + cssHeight / 2
+    const min = -fullBBox.height + OFFSCREEN_OFFSET
+    const max = cssHeight / scale - OFFSCREEN_OFFSET
     return Math.max(min, Math.min(max, offset))
   }
 
@@ -696,10 +696,88 @@ function drawWidget({
   }
 }
 
-type Size = { width: number; height: number }
-function composeBoxes(a: Size, b: Size) {
-  return {
-    width: Math.max(a.width, b.width),
-    height: Math.max(a.height, b.height),
+class CornerRect {
+  constructor(
+    public readonly x1: number,
+    public readonly y1: number,
+    public readonly x2: number,
+    public readonly y2: number,
+  ) {}
+  get x() {
+    return this.x1
+  }
+  get y() {
+    return this.y1
+  }
+  get width() {
+    return this.x2 - this.x1
+  }
+  get height() {
+    return this.y2 - this.y1
+  }
+  static fromRect(rect: Rect) {
+    return new CornerRect(
+      rect.x,
+      rect.y,
+      rect.x + rect.width,
+      rect.y + rect.height,
+    )
+  }
+  // Consumes the rect. aka modifies it's prototype
+  static fromCornerRect(rect: {
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+  }): CornerRect {
+    return Object.setPrototypeOf(rect, CornerRect.prototype)
+  }
+  compose(other: CornerRect) {
+    return CornerRect.compose(this, other)
+  }
+
+  static compose(a: CornerRect, b: CornerRect) {
+    return CornerRect.fromCornerRect({
+      x1: Math.min(a.x1, b.x1),
+      y1: Math.min(a.y1, b.y1),
+      x2: Math.max(a.x2, b.x2),
+      y2: Math.max(a.y2, b.y2),
+    })
+  }
+
+  static ofNode(node: VisualNode) {
+    return CornerRect.fromCornerRect({
+      x1: node.dx,
+      y1: node.dy,
+      x2: node.dx + node.bbox.width,
+      y2: node.dy + node.bbox.height,
+    })
+  }
+
+  static EMPTY = new CornerRect(0, 0, 0, 0)
+}
+
+declare global {
+  interface Iterator<T, TReturn = any, TNext = undefined> {
+    reduceOpt(fn: (acc: T, item: T) => T): T | undefined
+  }
+}
+
+// Yeah... I know, I know. Mutating the prototype of a built-in object is
+// generally a bad idea. But screw it!
+// Reduce as per spec throws if the iterator is empty and the default value is
+// not provided. This is a convenience method that returns undefined instead.
+Iterator.prototype.reduceOpt = function reduceOpt<T>(
+  this: Iterator<T>,
+  fn: (acc: T, item: T) => T,
+) {
+  const first = this.next()
+  if (first.done) return undefined
+  let res = first.value
+
+  while (true) {
+    const { value, done } = this.next()
+    if (done) return res
+    res = fn(res, value)
   }
 }
