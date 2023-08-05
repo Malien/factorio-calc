@@ -1,22 +1,38 @@
 import translations from "../extracted/locales/en.json"
 import recipeList from "../extracted/recipe.json"
-import Result from "./result"
+import Result, { assertError } from "./result"
+import { NonEmpty, nonEmpty } from "./util"
 
 export type Recipe = {
   name: string
   energyRequired: number
-  ingredients: NonEmpty<RecipeItem>
-  results: NonEmpty<RecipeItem>
+  ingredients: NonEmpty<ItemAmount>
+  results: NonEmpty<ItemAmount>
   icon: string | undefined
+  category: Category
 }
+
+export default function checkMembership<T extends string>(values: Iterable<T>) {
+  const possibleValues = new Set(values)
+  return (value: unknown): value is T => possibleValues.has(value as any)
+}
+
+const categories = [
+  "crafting",
+  "crafting-with-fluid",
+  "smelting",
+  "chemistry",
+] as const
+export type Category = (typeof categories)[number]
+export const isKnownCategory = checkMembership(categories)
 
 type RawRecipe = (typeof recipeList)[number]
 type RawRecipeItem =
   | (string | number)[] // in fact is `[name: string, amount: number]`
   | { name: string; amount: number; type?: string }
-export type RecipeItem = {
+export type ItemAmount = Item & { amount: number }
+export type Item = {
   name: string
-  amount: number
   type: "item" | "fluid"
 }
 
@@ -27,12 +43,10 @@ const disabledRecipes = new Set([
   "express-loader",
 ])
 
-type NonEmpty<T> = [T, ...T[]]
-function nonEmpty<T>(arr: T[]): arr is NonEmpty<T> {
-  return arr.length > 0
-}
-
-type ParseRecipeError = ParseIngredientsError | ParseResultError
+type ParseRecipeError =
+  | ParseIngredientsError
+  | ParseResultError
+  | "unknown-category"
 
 function parseRecipe(recipe: RawRecipe): Result<Recipe, ParseRecipeError> {
   const ingredients = parseIngredients(recipe)
@@ -43,13 +57,25 @@ function parseRecipe(recipe: RawRecipe): Result<Recipe, ParseRecipeError> {
   if (results.err) return results
   if (!nonEmpty(results.value)) return Result.err("missing-results")
 
+  const category = parseCategory(recipe.category)
+  if (category.err) return category
+
   return Result.ok({
     name: recipe.name,
     energyRequired: recipe.energy_required ?? 0.5,
     ingredients: ingredients.value,
     results: results.value,
     icon: recipe.icon,
+    category: category.value,
   })
+}
+
+function parseCategory(
+  category: string | undefined,
+): Result<Category, "unknown-category"> {
+  if (category === undefined) return Result.ok("crafting")
+  if (isKnownCategory(category)) return Result.ok(category)
+  return Result.err("unknown-category")
 }
 
 type ParseIngredientsError =
@@ -63,7 +89,7 @@ type ParseIngredientsError =
 
 function parseIngredients(
   recipe: RawRecipe,
-): Result<RecipeItem[], ParseIngredientsError> {
+): Result<ItemAmount[], ParseIngredientsError> {
   const rawIngredients = recipe.ingredients ?? recipe.normal.ingredients
   if (!rawIngredients) return Result.err("missing-ingredients")
 
@@ -90,7 +116,7 @@ type ParseResultError =
 
 function parseResults(
   recipe: RawRecipe,
-): Result<RecipeItem[], ParseResultError> {
+): Result<ItemAmount[], ParseResultError> {
   if (recipe.result) {
     return Result.ok([
       { name: recipe.result, amount: recipe.result_count ?? 1, type: "item" },
@@ -123,7 +149,7 @@ function parseResults(
 }
 
 type ParseItemError = "invalid-name" | "invalid-type" | "invalid-amount"
-function parseItem(item: RawRecipeItem): Result<RecipeItem, ParseItemError> {
+function parseItem(item: RawRecipeItem): Result<ItemAmount, ParseItemError> {
   if (Array.isArray(item)) {
     const [name, amount] = item
     if (typeof name !== "string") return Result.err("invalid-name")
@@ -135,10 +161,34 @@ function parseItem(item: RawRecipeItem): Result<RecipeItem, ParseItemError> {
   return Result.ok({ name, amount, type })
 }
 
+function guardAndReport<T, U extends T>({
+  guard,
+  report,
+}: {
+  guard(item: T): item is U
+  report(item: T): void
+}) {
+  return (item: T): item is U => {
+    if (!guard(item)) {
+      report(item)
+      return false
+    }
+    return true
+  }
+}
+
 export const recipes = recipeList[Symbol.iterator]()
   .filter(recipe => !disabledRecipes.has(recipe.name))
-  .map(parseRecipe)
-  .filter(Result.isOk)
+  .map(recipe => parseRecipe(recipe).context({ recipe }))
+  .filter(
+    guardAndReport({
+      guard: Result.isOk,
+      report(error) {
+        assertError(error)
+        console.warn(`Unsupported recipe definition`, error.error)
+      },
+    }),
+  )
   .map(Result.okValue)
   .toArray()
 
@@ -147,11 +197,13 @@ export const recipeMap = new Map(recipes.map(r => [r.name, r] as const))
 declare global {
   var recipes: Recipe[] | undefined
   var recipeMap: Map<string, Recipe> | undefined
+  var rawRecipes: RawRecipe[] | undefined
 }
 
 if (import.meta.env.DEV) {
   window.recipes = recipes
   window.recipeMap = recipeMap
+  window.rawRecipes = recipeList
 }
 
 export function recipeName(recipe: Recipe) {
@@ -165,7 +217,7 @@ export function recipeName(recipe: Recipe) {
   return recipe.name
 }
 
-export function recipeItemName({ name, amount }: RecipeItem) {
+export function recipeItemName({ name, amount }: ItemAmount) {
   const translation = t(name)
   if (!translation) return
 
@@ -188,3 +240,4 @@ export function recipesForResult(itemType: "item" | "fluid", itemName: string) {
     ),
   )
 }
+

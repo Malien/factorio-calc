@@ -1,4 +1,4 @@
-import { Recipe, recipes, recipeMap, recipeName, t, RecipeItem } from "./recipe"
+import { Recipe, recipes, recipeMap, recipeName, t, ItemAmount } from "./recipe"
 import { iconForItem, iconNameForRecipe, prepareIconWithName } from "./icon"
 
 function recipeButton(recipe: Recipe, signal?: AbortSignal) {
@@ -156,7 +156,7 @@ export function initSelectionDialog({
   }
 }
 
-function ingredient(ingredient: RecipeItem) {
+function ingredient(ingredient: ItemAmount) {
   const container = document.createElement("div")
   container.classList.add("tooltip-ingredient")
 
@@ -168,7 +168,7 @@ function ingredient(ingredient: RecipeItem) {
   name.classList.add("tooltip-ingredient-name")
   name.textContent = t(ingredient.name) ?? ingredient.name
 
-  iconForItem(ingredient.name, ingredient.type)
+  iconForItem(ingredient)
     .then(iconURL => {
       const icon = document.createElement("img")
       icon.classList.add("tooltip-ingredient-icon")

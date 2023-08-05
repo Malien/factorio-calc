@@ -1,4 +1,4 @@
-import type { Recipe } from "./recipe"
+import type { Item, Recipe } from "./recipe"
 import { scheduleTilDeadline } from "./scheduler"
 
 const iconPrefix = /^__base__\/graphics\/icons\//
@@ -62,8 +62,8 @@ const icons = globIcons(
     {
       as: "url",
       eager: true,
-    }
-  )
+    },
+  ),
 )
 
 export function iconURLForName(name: string) {
@@ -160,7 +160,7 @@ export function prepareIconWithName(name: string, signal?: AbortSignal) {
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   type: string,
-  quality?: number
+  quality?: number,
 ) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -169,7 +169,7 @@ function canvasToBlob(
         else reject(new Error("Failed to create blob from canvas"))
       },
       type,
-      quality
+      quality,
     )
   })
 }
@@ -187,12 +187,15 @@ function loadImage(src: string, signal?: AbortSignal) {
   })
 }
 
-export async function iconForItem(itemName: string, type: "item" | "fluid", signal?: AbortSignal) {
-  switch (type) {
-    case "item":
-      return await prepareIconWithName(itemName, signal)
-    case "fluid":
-      return await prepareIconWithName(`fluid/${itemName}`, signal)
-  }
+export async function iconForItem(item: Item, signal?: AbortSignal) {
+  return await prepareIconWithName(iconNameForItem(item), signal)
 }
 
+export function iconNameForItem({ name, type }: Item) {
+  switch (type) {
+    case "item":
+      return name
+    case "fluid":
+      return `fluid/${name}`
+  }
+}

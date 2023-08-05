@@ -1,3 +1,4 @@
+import { Machine, machineCount, madeIn } from "./machine"
 import { Recipe, recipesForResult } from "./recipe"
 
 export type NodeID = number & { readonly $tag: unique symbol }
@@ -7,7 +8,7 @@ export type RootNode = {
   type: "root"
   recipe: Recipe
   desiredProduction: number
-  assemblerTier: AssemblerTier
+  machine: Machine
 }
 export type AssemblerTier = 1 | 2 | 3
 
@@ -15,7 +16,7 @@ export type IntermediateNode = {
   id: NodeID
   type: "intermediate"
   recipe: Recipe
-  assemblerTier: AssemblerTier
+  machine: Machine
   desiredProduction: number
 }
 
@@ -48,20 +49,9 @@ export function emptyGraph(): RecipeGraph {
   }
 }
 
-export type Action = {
-  type: "expand"
-  node: NodeID
-}
-
-export function assemblerCount(
-  recipe: Recipe,
-  desiredProduction: number,
-  tier: AssemblerTier,
-) {
-  const craftingTime = recipe.energyRequired
-  const resultCount = recipe.results[0].amount
-  return (craftingTime * desiredProduction) / resultCount / tier
-}
+export type Action =
+  | { type: "expand"; node: NodeID }
+  | { type: "collapse"; node: NodeID }
 
 let nodesIssued = 0
 export function nextNodeID(): NodeID {
@@ -74,11 +64,11 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
     type: "root",
     recipe: rootRecipe,
     desiredProduction: 2,
-    assemblerTier: 1,
+    machine: madeIn(rootRecipe)[0],
   }
 
   const craftingTime = rootRecipe.energyRequired
-  const assemblers = assemblerCount(rootRecipe, 2, 1)
+  const assemblers = machineCount(rootRecipe, 2, rootNode.machine)
 
   const children: RecipeNode[] = []
   for (const { name, type, amount } of rootRecipe.ingredients) {
@@ -121,7 +111,7 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
     id: prevNode.id,
     type: "intermediate",
     recipe,
-    assemblerTier: 1,
+    machine: madeIn(recipe)[0],
     desiredProduction: prevNode.requiredAmount,
   }
 
