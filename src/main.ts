@@ -43,13 +43,13 @@ canvasPort.addEventListener("message", event => {
     return
   }
 
-  const recipe = recipesForResult(node.itemType, node.itemName)
+  const recipe = recipesForResult(node.item)
   if (recipe.length === 0) {
-    console.error("No recipes found for", node.itemType, node.itemName)
+    console.error("No recipes found for", node.item)
     return
   }
   if (recipe.length !== 1) {
-    console.error("Multiple recipes found for", node.itemType, node.itemName)
+    console.error("Multiple recipes found for", node.item)
     return
   }
 

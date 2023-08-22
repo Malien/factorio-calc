@@ -1,9 +1,4 @@
-import {
-  IntermediateNode,
-  RecipeNode,
-  RootNode,
-  TerminalNode,
-} from "../graph"
+import { IntermediateNode, RecipeNode, RootNode, TerminalNode } from "../graph"
 import { iconNameForItem, iconNameForRecipe } from "../icon"
 import { machineCount, machineItem, machineName } from "../machine"
 import { t } from "../recipe"
@@ -114,8 +109,14 @@ export function rootBox({ ctx, node }: BoxProps<RootNode>): LayoutResult {
   const craftingTime = `Crafting time: ${node.recipe.energyRequired}s`
   const craftingTimeMeasures = text(ctx, craftingTime, computedFonts.body)
 
-  const machinesRequired = machineCount(node.recipe, node.desiredProduction, node.machine)
-  const machinesRequiredText = `${machineName(node.machine)} required: ${numberFormat.format(machinesRequired)}`
+  const machinesRequired = machineCount(
+    node.recipe,
+    node.desiredProduction,
+    node.machine,
+  )
+  const machinesRequiredText = `${machineName(
+    node.machine,
+  )} required: ${numberFormat.format(machinesRequired)}`
   const machineIcon = iconNameForItem(machineItem(node.machine))
 
   const machinesRequiredMeasures = text(
@@ -321,7 +322,7 @@ export function terminalBox({
   node,
   focusedElement,
 }: BoxProps<TerminalNode>): LayoutResult {
-  const name = t(node.itemName) ?? node.itemName
+  const name = t(node.item.name) ?? node.item.name
   const nameMeasures = text(ctx, name, computedFonts.title)
 
   const requiredAmountText = `${numberFormat.format(node.requiredAmount)}/s`
@@ -338,7 +339,7 @@ export function terminalBox({
   )
 
   const iconName =
-    node.itemType === "fluid" ? `fluid/${node.itemName}` : node.itemName
+    node.item.type === "fluid" ? `fluid/${node.item.name}` : node.item.name
 
   if (node.producedByRecipes.length === 1) {
     return expandableTerminalBox()
@@ -372,7 +373,7 @@ export function terminalBox({
         expand: {
           tag: "button",
           activate: { type: "expand", node: node.id },
-          title: `Expand recipe for ${t(node.itemName)}`,
+          title: `Expand recipe for ${t(node.item.name)}`,
         },
       },
       contents: [
@@ -562,8 +563,14 @@ function intermediateNode({
   const craftingTime = `Crafting time: ${node.recipe.energyRequired}s`
   const craftingTimeMeasures = text(ctx, craftingTime, computedFonts.body)
 
-  const machinesRequired = machineCount(node.recipe, node.desiredProduction, node.machine)
-  const machinesRequiredText = `${machineName(node.machine)} required: ${numberFormat.format(machinesRequired)}`
+  const machinesRequired = machineCount(
+    node.recipe,
+    node.desiredProduction,
+    node.machine,
+  )
+  const machinesRequiredText = `${machineName(
+    node.machine,
+  )} required: ${numberFormat.format(machinesRequired)}`
   const machineIcon = iconNameForItem(machineItem(node.machine))
   const machinesRequiredMeasures = text(
     ctx,
@@ -621,8 +628,8 @@ function intermediateNode({
       collapse: {
         tag: "button",
         title: `Collapse ${name}`,
-        activate: { type: "collapse", node: node.id }
-      }
+        activate: { type: "collapse", node: node.id },
+      },
     },
     contents: [
       {
@@ -676,7 +683,7 @@ function intermediateNode({
           y: BOX_PADDING - FOCUS_RING_SIZE,
           width: COLLAPSE_BUTTON_SIZE + FOCUS_RING_SIZE * 2,
           height: COLLAPSE_BUTTON_SIZE + FOCUS_RING_SIZE * 2,
-        }
+        },
       },
       {
         type: "box",
@@ -689,17 +696,21 @@ function intermediateNode({
           y: BOX_PADDING,
           width: COLLAPSE_BUTTON_SIZE,
           height: COLLAPSE_BUTTON_SIZE,
-        }
+        },
       },
       {
         type: "box",
         bg: COLLAPSE_BUTTON_COLOR,
         layout: {
-          x: bbox.width - BOX_PADDING - COLLAPSE_BUTTON_SIZE + COLLAPSE_BUTTON_PADDING,
+          x:
+            bbox.width -
+            BOX_PADDING -
+            COLLAPSE_BUTTON_SIZE +
+            COLLAPSE_BUTTON_PADDING,
           y: BOX_PADDING + COLLAPSE_BUTTON_SIZE / 2 - COLLAPSE_MINUS_HEIGHT / 2,
           width: COLLAPSE_BUTTON_SIZE - COLLAPSE_BUTTON_PADDING * 2,
           height: COLLAPSE_MINUS_HEIGHT,
-        }
+        },
       },
       {
         type: "text",

@@ -36,6 +36,10 @@ export type Item = {
   type: "item" | "fluid"
 }
 
+export function itemEq(a: Item, b: Item) {
+  return a.name === b.name && a.type === b.type
+}
+
 const disabledRecipes = new Set([
   "electric-energy-interface",
   "loader",
@@ -233,11 +237,8 @@ export function t(key: string) {
   }
 }
 
-export function recipesForResult(itemType: "item" | "fluid", itemName: string) {
+export function recipesForResult(targetItem: Item) {
   return recipes.filter(recipe =>
-    recipe.results.some(
-      result => result.name === itemName && result.type === itemType,
-    ),
+    recipe.results.some(result => itemEq(result, targetItem)),
   )
 }
-

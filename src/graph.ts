@@ -1,5 +1,5 @@
 import { Machine, machineCount, madeIn } from "./machine"
-import { Recipe, recipesForResult } from "./recipe"
+import { Item, Recipe, itemEq, recipesForResult } from "./recipe"
 
 export type NodeID = number & { readonly $tag: unique symbol }
 
@@ -23,8 +23,7 @@ export type IntermediateNode = {
 export type TerminalNode = {
   id: NodeID
   type: "terminal"
-  itemName: string
-  itemType: "item" | "fluid"
+  item: Item
   requiredAmount: number
   producedByRecipes: Recipe[]
 }
@@ -71,14 +70,13 @@ export function initialGraph(rootRecipe: Recipe): RecipeGraph {
   const assemblers = machineCount(rootRecipe, 2, rootNode.machine)
 
   const children: RecipeNode[] = []
-  for (const { name, type, amount } of rootRecipe.ingredients) {
+  for (const { amount, ...item } of rootRecipe.ingredients) {
     children.push({
       id: nextNodeID(),
       type: "terminal",
-      itemName: name,
-      itemType: type,
+      item: item,
       requiredAmount: (assemblers * amount) / craftingTime,
-      producedByRecipes: recipesForResult(type, name),
+      producedByRecipes: recipesForResult(item),
     })
   }
 
@@ -116,14 +114,13 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
   }
 
   const childIds: NodeID[] = []
-  for (const { name, type, amount } of recipe.ingredients) {
+  for (const { amount, ...item } of recipe.ingredients) {
     const child: TerminalNode = {
       id: nextNodeID(),
       type: "terminal",
-      itemName: name,
-      itemType: type,
+      item,
       requiredAmount: prevNode.requiredAmount * amount,
-      producedByRecipes: recipesForResult(type, name),
+      producedByRecipes: recipesForResult(item),
     }
     graph.nodes.set(child.id, child)
     graph.nodeDepth.set(child.id, depth + 1)
@@ -137,4 +134,22 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID, recipe: Recipe) {
     graph.nodesOnLevel.push(0)
   }
   graph.nodesOnLevel[depth + 1] += childIds.length
+}
+
+function nodeMergeItem(node: RecipeNode) {
+  switch (node.type) {
+    case "root":
+      return undefined
+    case "intermediate":
+      return node.recipe.results[0]
+    case "terminal":
+      return node.item
+  }
+}
+
+export function canMerge(a: RecipeNode, b: RecipeNode) {
+  const aItem = nodeMergeItem(a)
+  const bItem = nodeMergeItem(b)
+  if (!aItem || !bItem) return false
+  return itemEq(aItem, bItem)
 }
