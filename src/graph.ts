@@ -51,6 +51,7 @@ export function emptyGraph(): RecipeGraph {
 export type Action =
   | { type: "expand"; node: NodeID }
   | { type: "collapse"; node: NodeID }
+  | { type: "merge"; node: NodeID, with: NodeID }
 
 let nodesIssued = 0
 export function nextNodeID(): NodeID {

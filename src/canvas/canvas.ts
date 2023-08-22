@@ -117,6 +117,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   }
 
   const nodes = new Map<NodeID, VisualNode>()
+  let zBuffer: NodeID[] = []
   let graph = emptyGraph()
   const interactiveRegions = new Map<NodeID, InteractiveRegion[]>()
 
@@ -165,7 +166,15 @@ export function initCanvas(canvas: HTMLCanvasElement) {
       }
     }
 
-    for (const node of nodes.values()) {
+    for (const nodeId of reverseIter(zBuffer)) {
+      const node = nodes.get(nodeId)
+      if (!node) {
+        console.warn(
+          "Node is in zOrder list but not in nodes map. Skipping.",
+          nodeId,
+        )
+        continue
+      }
       for (const widget of node.contents) {
         drawWidget({
           ctx,
@@ -185,7 +194,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
           (globalOffset.dx + node.dx) * scale,
           (globalOffset.dy + node.dy) * scale,
           node.bbox.width * scale,
-          node.bbox.height * scale
+          node.bbox.height * scale,
         )
         ctx.strokeStyle = MERGE_BORDER_COLOR
         ctx.lineWidth = MERGE_BORDER_WIDTH * scale
@@ -193,7 +202,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
           (globalOffset.dx + node.dx) * scale,
           (globalOffset.dy + node.dy) * scale,
           node.bbox.width * scale,
-          node.bbox.height * scale
+          node.bbox.height * scale,
         )
       }
     }
@@ -308,6 +317,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
 
     nodes.clear()
     interactiveRegions.clear()
+    zBuffer = []
     const nodesPlacedByLevel = Array(newGraph.nodesOnLevel.length).fill(0)
     for (const { node, bbox, contents, dragbox } of layoutNodes) {
       const level = newGraph.nodeDepth.get(node.id)!
@@ -340,6 +350,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
         contents,
         externalElements: [],
       })
+      zBuffer.push(node.id)
     }
 
     fullBBox =
@@ -485,7 +496,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     const y = ev.y - top
 
     const region = regionHitTest(x, y)
-    const [topHit, underHit] = [...hitChain(x, y)].reverse()
+    const [topHit, underHit] = hitChain(x, y)
 
     let newCursor = cursor
     if (region) {
@@ -534,14 +545,27 @@ export function initCanvas(canvas: HTMLCanvasElement) {
         box,
         anchor: { x: x - box.dx * scale, y: y - box.dy * scale },
       })
+      shiftOrder(zBuffer, box.recipeNode.id)
     } else if (type === "region" && box.interactivity.click) {
       localPort.postMessage(box.interactivity.click)
     }
-    nodeToMergeWith = undefined
   }
 
   function handlePointerUp(ev: PointerEvent) {
+    const pointerState = pointerStates.get(ev.pointerId)
     pointerStates.delete(ev.pointerId)
+    if (nodeToMergeWith) {
+      if (pointerState) {
+        localPort.postMessage({
+          type: "merge",
+          node: pointerState.box.recipeNode.id,
+          with: nodeToMergeWith,
+        })
+      }
+
+      nodeToMergeWith = undefined
+      invalidateFrame()
+    }
   }
 
   function handleWheel(ev: WheelEvent) {
@@ -551,12 +575,20 @@ export function initCanvas(canvas: HTMLCanvasElement) {
     invalidateFrame()
   }
 
+  /** Produce hit targets for the given point, respects z buffer. */
   function* hitChain(x: number, y: number) {
     y /= scale
     x /= scale
     x -= globalOffset.dx
     y -= globalOffset.dy
-    for (const node of nodes.values()) {
+    for (const nodeId of zBuffer) {
+      const node = nodes.get(nodeId)
+      if (!node) {
+        console.warn(
+          `Node ${nodeId} not found in graph when hit testing. Skipping.`,
+        )
+        continue
+      }
       if (isWithinBox(node, x, y)) {
         const regions = interactiveRegions.get(node.recipeNode.id) ?? []
 
@@ -713,7 +745,6 @@ type DrawWidgetArgs = {
   scale: number
   widget: Widget
   abortSignal?: LightweightAbortSignal
-  mergeable?: boolean
 }
 
 function drawWidget({
@@ -851,5 +882,34 @@ Iterator.prototype.reduceOpt = function reduceOpt<T>(
     const { value, done } = this.next()
     if (done) return res
     res = fn(res, value)
+  }
+}
+
+/**
+ * Mutates input array.
+ * Shifts element `nodeId` to the beginning of the array.
+ * Array has to contain `nodeId` for algo to work correctly, otherwise it will lead to duplication of elements.
+ * Please do not provide holey arrays. Thanks.
+ */
+function shiftOrder(order: NodeID[], nodeId: NodeID) {
+  if (order.length === 0) return
+
+  let current = order[0]!
+
+  for (let i = 1; i < order.length; i++) {
+    if (current === nodeId) {
+      order[0] = nodeId
+      return
+    }
+    const next = order[i]!
+    order[i] = current
+    current = next
+  }
+  order[0] = current
+}
+
+function* reverseIter<T>(array: T[]) {
+  for (let i = array.length - 1; i >= 0; i--) {
+    yield array[i]!
   }
 }
