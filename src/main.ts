@@ -2,12 +2,13 @@ import "./style.css"
 import "iterator-polyfill"
 import { initCanvas } from "./canvas"
 import { initSelectionDialog } from "./select-dialog"
-import { recipeMap, recipesForResult } from "./recipe"
-import { RecipeGraph, expandNode, initialGraph } from "./graph"
+import { recipeMap } from "./recipe"
+import { NodeID, RecipeGraph, collapseNode, expandNode, initialGraph, mergeNodes } from "./graph"
+import Result from "./result"
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement
 const selectionDialog = document.getElementById(
-  "selection-dialog"
+  "selection-dialog",
 ) as HTMLDialogElement
 
 let graph: RecipeGraph | undefined
@@ -33,31 +34,52 @@ canvasPort.addEventListener("message", event => {
     console.error("Graph not initialized")
     return
   }
-  const node = graph.nodes.get(event.data.node)
-  if (!node) {
-    console.error("Node with id doesn't exist", event.data.node)
-    return
-  }
-  if (node.type !== "terminal") {
-    console.error("Selected node is not terminal", node)
-    return
-  }
 
-  const recipe = recipesForResult(node.item)
-  if (recipe.length === 0) {
-    console.error("No recipes found for", node.item)
-    return
-  }
-  if (recipe.length !== 1) {
-    console.error("Multiple recipes found for", node.item)
-    return
-  }
-
-  if (event.data.type === "expand") {
-    expandNode(graph, event.data.node, recipe[0]!)
-    canvasPort.postMessage({ type: "update-graph", graph })
+  switch (event.data.type) {
+    case "expand":
+      return handle(expand, graph, event.data.node)
+    case "collapse":
+      return handle(collapse, graph, event.data.node)
+    case "merge":
+      return handle(merge, graph, event.data.node, event.data.with)
   }
 })
+
+function handle<T extends (...args: any[]) => Result<void, unknown>>(
+  fn: T,
+  ...args: Parameters<T>
+) {
+  try {
+    const res = fn(...args)
+    if (res.err) {
+      console.error("Failed to handle event", { name: fn.name, error: res.error, graph})
+    }
+  } catch (error) {
+    console.error("Failed to handle event", { name: fn.name, error, graph })
+  }
+}
+
+function expand(graph: RecipeGraph, nodeID: NodeID) {
+  const res = expandNode(graph, nodeID).context({ node: nodeID })
+  if (res.err) return res
+  canvasPort.postMessage({ type: "update-graph", graph })
+  return Result.void
+}
+
+function collapse(graph: RecipeGraph, node: NodeID) {
+  const res = collapseNode(graph, node).context({ node })
+  if (res.err) return res
+  canvasPort.postMessage({ type: "update-graph", graph })
+  return Result.void
+}
+
+function merge(graph: RecipeGraph, node: NodeID, withNode: NodeID) {
+  const res = mergeNodes(graph, node, withNode).context({ node, with: withNode })
+  if (res.err) return res
+  canvasPort.postMessage({ type: "update-graph", graph })
+  return Result.void
+}
+
 // Markup includes dialog element already shown, we have to reopen it
 // so it becomes modal, and also draws ::backdrop pseudo-element
 selectionDialog.close()

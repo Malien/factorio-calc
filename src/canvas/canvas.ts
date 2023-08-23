@@ -137,7 +137,7 @@ export function initCanvas(canvas: HTMLCanvasElement) {
   function draw() {
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
-    for (const [fromVertex, toVertices] of graph.edges) {
+    for (const [fromVertex, toVertices] of graph.downEdges) {
       const fromBox = nodes.get(fromVertex)
       if (!fromBox) {
         console.warn("Missing node for vertex", fromVertex)
