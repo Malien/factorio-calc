@@ -154,7 +154,8 @@ export function expandNode(graph: RecipeGraph, nodeID: NodeID) {
 type CollapseError =
   | "node-not-found"
   | "unsupported-node"
-  | { kind: "inconsistent-graph"; reason: string }
+  | Inconsistency
+  | SeverEdgeError
 
 export function collapseNode(
   graph: RecipeGraph,
@@ -164,53 +165,14 @@ export function collapseNode(
   if (!node) return Result.err("node-not-found")
   if (node.type !== "intermediate") return Result.err("unsupported-node")
 
-  // Save to an intermediate array, so that we don't modify
-  // the graph while traversing it.
-  const deletionNodes = Array.from(traverseInDepth(graph, nodeID))
+  const downEdges = graph.downEdges.get(nodeID)
+  if (!downEdges) return inconsistency("Missing down edges from nonterminal node", { node })
 
-  for (const nodeIdForDeletion of deletionNodes) {
-    const node = graph.nodes.get(nodeIdForDeletion)
-    if (!node) return inconsistency("Missing node", { node: nodeIdForDeletion })
-
-    const depth = graph.nodeDepth.get(nodeIdForDeletion)
-    if (!depth) {
-      return inconsistency("Missing depth", { node: nodeIdForDeletion })
-    }
-
-    const downEdges = graph.downEdges.get(nodeIdForDeletion)
-
-    graph.nodesOnLevel[depth] -= 1
-    graph.nodes.delete(nodeIdForDeletion)
-    graph.nodeDepth.delete(nodeIdForDeletion)
-    graph.upEdges.delete(nodeIdForDeletion)
-    graph.downEdges.delete(nodeIdForDeletion)
-
-    if (node.type === "terminal") continue
-    if (!downEdges) {
-      return inconsistency(
-        "While traversing found a non-terminal node with no downedges.",
-        { node: nodeIdForDeletion },
-      )
-    }
-
-    for (const childId of downEdges) {
-      const upNodes = graph.upEdges.get(childId)
-      if (!upNodes) {
-        return inconsistency(
-          "While traversing found a node with no upedges. " +
-            "Possibly node is missing, yet the downedge to it is present",
-          { node: childId, downedgeFrom: nodeIdForDeletion },
-        )
-      }
-      const idx = upNodes.findIndex(id => id === nodeIdForDeletion)
-      if (idx === -1) {
-        return inconsistency(
-          "While traversing found downedge without corresponding upedge",
-          { node: childId, downedgeFrom: nodeIdForDeletion },
-        )
-      }
-      upNodes.splice(idx, 1)
-    }
+  // We don't want to modify downEdges array while iterating over it,
+  // so we copy all of the edges to a new array.
+  for (const childId of Array.from(downEdges)) {
+    const res = severEdge(graph, nodeID, childId)
+    if (res.err) return res
   }
 
   const replacementNode: TerminalNode = {
@@ -222,6 +184,72 @@ export function collapseNode(
   }
   graph.nodes.set(replacementNode.id, replacementNode)
   graph.downEdges.delete(nodeID)
+
+  return Result.void
+}
+
+type SeverEdgeError =
+  | { kind: "no-edge", direction: "up" | "down", from: NodeID, to: NodeID }
+  | Inconsistency
+
+/** Works only for Directed Acyclic Graphs. Will loop forever if there is a cycle. */
+function severEdge(graph: RecipeGraph, from: NodeID, to: NodeID): Result<void, SeverEdgeError> {
+  console.debug("severEdge", from, to)
+  const upEdges = graph.upEdges.get(to)
+  if (!upEdges) return Result.err({ kind: "no-edge", direction: "up", from, to })
+  const idxUp = upEdges.findIndex(id => id === from)
+  if (idxUp === -1) return Result.err({ kind: "no-edge", direction: "up", from, to })
+
+  const downEdges = graph.downEdges.get(from)
+  if (!downEdges) return Result.err({ kind: "no-edge", direction: "down", from, to })
+  const idxDown = downEdges.findIndex(id => id === to)
+  if (idxDown === -1) return Result.err({ kind: "no-edge", direction: "down", from, to })
+
+  upEdges.splice(idxUp, 1)
+  downEdges.splice(idxDown, 1)
+
+  if (upEdges.length === 0) {
+    return deleteNode(graph, to)
+  }
+
+  const oldDepth = graph.nodeDepth.get(to)
+  if (oldDepth === undefined) return inconsistency("Missing depth", { node: to })
+
+  let newDepth = graph.nodeDepth.get(upEdges[0]!)
+  if (newDepth === undefined) return inconsistency("Missing depth", { node: upEdges[0]! })
+  for (const parentId of upEdges.slice(1)) {
+    const depth = graph.nodeDepth.get(parentId)
+    if (depth === undefined) return inconsistency("Missing depth", { node: parentId })
+    newDepth = Math.max(newDepth, depth)
+  }
+  newDepth += 1
+
+  if (newDepth !== oldDepth) {
+    graph.nodesOnLevel[oldDepth] -= 1
+    graph.nodesOnLevel[newDepth] += 1
+    graph.nodeDepth.set(to, newDepth)
+  }
+
+  return Result.void
+}
+
+/** Works only for Directed Acyclic Graphs. Will loop forever if there is a cycle. */
+function deleteNode(graph: RecipeGraph, node: NodeID): Result<void, SeverEdgeError> {
+  console.debug("deleteNode", node)
+  graph.nodes.delete(node)
+  const depth = graph.nodeDepth.get(node)
+  if (depth === undefined) return inconsistency("Missing depth", { node })
+  graph.nodesOnLevel[depth] -= 1
+  graph.nodeDepth.delete(node)
+  graph.upEdges.delete(node)
+
+  const downEdges = graph.downEdges.get(node)
+  if (!downEdges) return Result.void
+
+  for (const childId of downEdges) {
+    const res = severEdge(graph, node, childId)
+    if (res.err) return res
+  }
 
   return Result.void
 }
@@ -250,7 +278,7 @@ type MergeError =
   | { kind: "node-not-found"; node: NodeID }
   | "incompatible-node-items"
   | "incompatible-node-types"
-  | { kind: "inconsistent-graph"; reason: string }
+  | Inconsistency
 
 /** Mutates graph passed in */
 export function mergeNodes(
@@ -405,14 +433,15 @@ function* traverseInBreadth(graph: RecipeGraph, startNode: NodeID) {
   }
 }
 
+type Inconsistency = { kind: "inconsistent-graph"; reason: string }
 
 function inconsistency(
   reason: string,
-): Err<{ kind: "inconsistent-graph"; reason: string }>
+): Err<Inconsistency>
 function inconsistency<T>(
   reason: string,
   value: T,
-): Err<{ kind: "inconsistent-graph"; reason: string } & T>
+): Err<Inconsistency & T>
 function inconsistency<T>(reason: string, value?: T) {
   return Result.err({ kind: "inconsistent-graph", reason, ...value })
 }
