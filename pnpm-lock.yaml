@@ -1,9 +1,13 @@
 lockfileVersion: '6.0'
 
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
 dependencies:
-  iterator-polyfill:
-    specifier: ^1.0.9
-    version: 1.0.9
+  '@malien/iterator-polyfill':
+    specifier: ^1.1.0
+    version: 1.1.1
 
 devDependencies:
   typescript:
@@ -213,6 +217,10 @@ packages:
     dev: true
     optional: true
 
+  /@malien/iterator-polyfill@1.1.1:
+    resolution: {integrity: sha512-rr3x3p/GMUw+GjKLghTz72T7eSCf1vHUzL8eFYZtdq74E2+N8mO86mH+u0oEtfnAwfxglxl0QPAW/WAH7pXhiA==}
+    dev: false
+
   /esbuild@0.18.16:
     resolution: {integrity: sha512-1xLsOXrDqwdHxyXb/x/SOyg59jpf/SH7YMvU5RNSU7z3TInaASNJWNFJ6iRvLvLETZMasF3d1DdZLg7sgRimRQ==}
     engines: {node: '>=12'}
@@ -250,10 +258,6 @@ packages:
     requiresBuild: true
     dev: true
     optional: true
-
-  /iterator-polyfill@1.0.9:
-    resolution: {integrity: sha512-YKBrosdKd9nqEaJwpYZjlnax8WtLwCbTo7gnUXrQ3ARA92vD2W8hdOWCRzvotHByDRCvPrFvEFF4M3V53lwAHQ==}
-    dev: false
 
   /nanoid@3.3.6:
     resolution: {integrity: sha512-BGcqMMJuToF7i1rt+2PWSNVnWIkGCU78jBG3RxO/bZlnZPK2Cmi2QaffxGO/2RvWi9sL+FAiRiXMgsyxQ1DIDA==}

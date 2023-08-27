@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "iterator-polyfill": "^1.0.9"
+    "@malien/iterator-polyfill": "^1.1.0"
   },
   "devDependencies": {
     "typescript": "^5.1.6",
